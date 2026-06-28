@@ -1,0 +1,23 @@
+# IDE / editor
+.vscode/
+.idea/
+
+# Speckit & Copilot tooling (local workflow state — not versioned)
+.specify/
+
+# GitHub agent definitions — uncomment to ignore if you do NOT want
+# these agent files versioned (e.g. they contain team-private workflows)
+# .github/
+
+# Maven build output (lives in kvstore/target/)
+kvstore/target/
+*.class
+*.iml
+
+# Runtime artefacts
+kvstore/data/
+kvstore/logs/
+*.log
+
+# macOS
+.DS_Store
