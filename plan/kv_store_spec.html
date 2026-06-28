@@ -1,0 +1,516 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1.25rem}
+.nb{font-size:12px;padding:5px 13px;border-radius:20px;border:0.5px solid var(--color-border-secondary);cursor:pointer;color:var(--color-text-secondary);background:transparent;transition:all .15s}
+.nb.active{background:var(--color-text-primary);color:var(--color-background-primary);border-color:transparent}
+.section{margin-bottom:1.25rem}
+.card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem;margin-bottom:.75rem}
+.card.highlight{border:1.5px solid var(--color-border-info)}
+.sl{font-size:11px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
+.title{font-size:14px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px}
+.sub{font-size:12px;color:var(--color-text-secondary);line-height:1.6}
+.pills{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.pill{font-size:11px;padding:3px 8px;border-radius:20px;border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary);background:var(--color-background-secondary)}
+.pill.must{background:#FAECE7;color:#712B13;border-color:transparent}
+.pill.core{background:#EEEDFE;color:#3C3489;border-color:transparent}
+.pill.bonus{background:#E1F5EE;color:#085041;border-color:transparent}
+.code{background:var(--color-background-tertiary);border-radius:var(--border-radius-md);padding:10px 12px;font-family:var(--font-mono);font-size:11px;color:var(--color-text-primary);line-height:1.7;margin:8px 0;overflow-x:auto;white-space:pre}
+.week-badge{font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;margin-bottom:8px;display:inline-block}
+.row{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.row:last-child{border-bottom:none}
+.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:5px}
+.row-text{font-size:12px;color:var(--color-text-secondary);line-height:1.5}
+.row-text strong{color:var(--color-text-primary);font-weight:500}
+.interview-box{background:var(--color-background-info);border:0.5px solid var(--color-border-info);border-radius:var(--border-radius-md);padding:10px 14px;font-size:12px;color:var(--color-text-info);line-height:1.6;margin-top:8px}
+.warn-box{background:var(--color-background-warning);border:0.5px solid var(--color-border-warning);border-radius:var(--border-radius-md);padding:10px 14px;font-size:12px;color:var(--color-text-warning);line-height:1.6;margin-top:8px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.check{display:flex;align-items:flex-start;gap:8px;padding:5px 0}
+.check-box{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--color-border-secondary);flex-shrink:0;margin-top:1px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.check-box.done{background:var(--color-background-success);border-color:var(--color-border-success)}
+.check-box.done::after{content:'✓';font-size:10px;color:var(--color-text-success);font-weight:600}
+.check-label{font-size:12px;color:var(--color-text-secondary);line-height:1.5}
+.prog-wrap{background:var(--color-background-tertiary);border-radius:4px;height:5px;margin:8px 0;overflow:hidden}
+.prog-fill{height:100%;border-radius:4px;background:var(--color-text-success);transition:width .3s}
+</style>
+
+<div class="nav" id="nav"></div>
+<div id="content"></div>
+
+<script>
+const TABS = [
+  {id:'overview', label:'Overview'},
+  {id:'arch', label:'Architecture'},
+  {id:'plan', label:'Week-by-week'},
+  {id:'api', label:'API spec'},
+  {id:'deep', label:'Deep dives'},
+  {id:'interview', label:'Interview prep'},
+];
+
+const WEEKS = [
+  {
+    n:1, title:'Core engine — GET, SET, DEL in memory',
+    badge:'Foundation', badgeBg:'#EAF3DE', badgeTxt:'#3B6D11',
+    goal:'A working in-memory store with a ConcurrentHashMap, a TCP server that accepts commands, and a basic RESP-like protocol parser.',
+    tasks:[
+      {t:'Project setup', d:'Maven/Gradle project. Package structure: engine, server, protocol, persistence, replication.'},
+      {t:'Storage engine', d:'KVStore class backed by ConcurrentHashMap<String, ValueEntry>. ValueEntry holds value + expiry timestamp.'},
+      {t:'Command parser', d:'Read raw bytes from socket. Parse "SET key value", "GET key", "DEL key". Return +OK, $value, :0/:1.'},
+      {t:'TCP server', d:'ServerSocket on port 6379. Each client gets a thread from a fixed thread pool (ExecutorService).'},
+      {t:'Unit tests', d:'JUnit 5 tests for SET/GET/DEL, missing key returns null, overwrite returns old value.'},
+    ],
+    code:`// ValueEntry.java
+public class ValueEntry {
+    public final String value;
+    public final long expiresAt; // -1 = no expiry
+    public ValueEntry(String value, long ttlMs) {
+        this.value = value;
+        this.expiresAt = ttlMs < 0 ? -1
+            : System.currentTimeMillis() + ttlMs;
+    }
+    public boolean isExpired() {
+        return expiresAt != -1
+            && System.currentTimeMillis() > expiresAt;
+    }
+}`,
+    learns:['ConcurrentHashMap internals','Thread pool sizing','Socket programming in Java','Protocol design basics'],
+    interview:'Interviewer will ask: how do you handle concurrent reads and writes? Why ConcurrentHashMap over synchronizedMap? What happens if two threads write the same key simultaneously?'
+  },
+  {
+    n:2, title:'TTL + expiry + LRU eviction',
+    badge:'Core features', badgeBg:'#EEEDFE', badgeTxt:'#3C3489',
+    goal:'Keys expire automatically. When memory exceeds a threshold, LRU eviction kicks in. You\'ve now replicated Redis\'s two most important memory management mechanisms.',
+    tasks:[
+      {t:'TTL support', d:'SET key value EX 30 sets a 30-second TTL. On GET, check isExpired() — return null and schedule deletion if yes.'},
+      {t:'Lazy expiry', d:'Don\'t scan all keys constantly. Check on access (lazy) + a background thread that scans a random 20% of keys every 100ms (Redis approach).'},
+      {t:'LRU cache implementation', d:'Implement LRU from scratch: doubly linked list + HashMap. O(1) get and put. This is LeetCode 146 in production.'},
+      {t:'Memory threshold', d:'Track approximate memory usage. When > MAX_MEMORY, evict least recently used keys until below 80% threshold.'},
+      {t:'EXPIRE command', d:'EXPIRE key 60 sets TTL on existing key. TTL key returns remaining seconds. PERSIST key removes expiry.'},
+    ],
+    code:`// LRUCache.java — O(1) get and put
+public class LRUCache {
+    private final int capacity;
+    private final Map<String, Node> map = new HashMap<>();
+    private final Node head = new Node(), tail = new Node();
+
+    public LRUCache(int capacity) {
+        this.capacity = capacity;
+        head.next = tail; tail.prev = head;
+    }
+    public String get(String key) {
+        if (!map.containsKey(key)) return null;
+        Node node = map.get(key);
+        remove(node); addToFront(node); // mark as recently used
+        return node.value;
+    }
+    public void put(String key, String value) {
+        if (map.containsKey(key)) remove(map.get(key));
+        Node node = new Node(key, value);
+        addToFront(node); map.put(key, node);
+        if (map.size() > capacity) {
+            Node lru = tail.prev;
+            remove(lru); map.remove(lru.key);
+        }
+    }
+}`,
+    learns:['LRU from scratch (LeetCode 146 — for real)','Background thread scheduling','Memory estimation in Java','Lazy vs eager expiry trade-offs'],
+    interview:'This is the deepest dive an interviewer will take. Be ready to whiteboard LRU from scratch, explain why O(1) requires both a hashmap AND a linked list, and explain why Redis uses lazy expiry rather than a full scan.'
+  },
+  {
+    n:3, title:'Persistence — AOF and snapshots',
+    badge:'Durability', badgeBg:'#FAEEDA', badgeTxt:'#633806',
+    goal:'The store survives a restart. You now understand exactly what Redis\'s AOF and RDB persistence modes are doing — because you built both.',
+    tasks:[
+      {t:'AOF (Append Only File)', d:'Every write command is appended to a log file as text. On startup, replay the file to restore state. This is the WAL pattern.'},
+      {t:'AOF rewrite', d:'If AOF grows too large, compact it: for each live key, write one SET command. Atomic swap of old vs new file.'},
+      {t:'Snapshot (RDB-style)', d:'Background thread serialises the full keyspace to a binary file every N seconds or every M writes. Use Java serialisation or a simple binary format.'},
+      {t:'Crash recovery', d:'On startup: if AOF exists, replay it. If only snapshot exists, load it. If both, AOF wins (more recent).'},
+      {t:'fsync strategy', d:'AOF with fsync every write = safe but slow. fsync every second = small data loss risk but fast. Make it configurable.'},
+    ],
+    code:`// AOFWriter.java — append every command
+public class AOFWriter {
+    private final BufferedWriter writer;
+
+    public void log(String command) throws IOException {
+        writer.write(command);
+        writer.newLine();
+        writer.flush(); // fsync on every write (safe mode)
+    }
+
+    // AOF replay on startup
+    public void replay(KVStore store, Path aofPath)
+            throws IOException {
+        try (var lines = Files.lines(aofPath)) {
+            lines.forEach(line ->
+                store.execute(CommandParser.parse(line)));
+        }
+    }
+}`,
+    learns:['Write-Ahead Log (WAL) — used by every database','Atomic file operations in Java','Serialisation formats (text vs binary)','fsync and durability guarantees'],
+    interview:'WAL is in every system design interview. "How does your database guarantee durability?" The answer is always some variant of what you just built. You can now answer from experience.'
+  },
+  {
+    n:4, title:'Primary-replica replication',
+    badge:'Distribution', badgeBg:'#FAECE7', badgeTxt:'#712B13',
+    goal:'One primary node accepts writes. One or more replicas stay in sync. You\'ve implemented the most fundamental distributed systems pattern — this is how every database scales reads.',
+    tasks:[
+      {t:'Replication protocol', d:'Primary keeps a replication backlog (circular buffer of recent commands). Replica connects, sends REPLCONF, primary streams backlog then live commands.'},
+      {t:'Replica server', d:'Starts as a regular KVStore but connects to primary on startup. Applies every command it receives — read-only to external clients.'},
+      {t:'Offset tracking', d:'Each command gets an offset (like a Kafka offset). Replica tracks its offset. On reconnect, it asks for commands from last known offset.'},
+      {t:'Partial resync', d:'If replica has been offline briefly, send only missed commands. If too far behind, send a full snapshot (RDB transfer) then stream live.'},
+      {t:'WAIT command', d:'Client sends WAIT 1 100 — block until at least 1 replica has acknowledged, or 100ms timeout. Implements synchronous replication.'},
+    ],
+    code:`// ReplicationManager.java (primary side)
+public class ReplicationManager {
+    private final List<ReplicaConnection> replicas
+        = new CopyOnWriteArrayList<>();
+    private final RingBuffer<String> backlog
+        = new RingBuffer<>(1_000_000);
+    private final AtomicLong offset = new AtomicLong(0);
+
+    public void propagate(String command) {
+        long cmdOffset = offset.incrementAndGet();
+        backlog.append(command);
+        for (ReplicaConnection r : replicas) {
+            r.sendAsync(cmdOffset + " " + command);
+        }
+    }
+    public void syncReplica(ReplicaConnection r,
+            long fromOffset) {
+        if (backlog.contains(fromOffset)) {
+            backlog.stream(fromOffset)
+                   .forEach(r::sendAsync); // partial resync
+        } else {
+            sendFullSnapshot(r); // too far behind
+        }
+    }
+}`,
+    learns:['Primary-replica replication (used in MySQL, Redis, Postgres)','Circular/ring buffers','Partial vs full resync — same logic as Redis PSYNC','Synchronous vs asynchronous replication trade-offs'],
+    interview:'This is a senior-level conversation. Interviewers ask: how do you handle replica lag? What happens if primary crashes before replica syncs? What\'s the replication factor needed for no data loss? You now have real answers.'
+  },
+  {
+    n:5, title:'HTTP API + CLI client + polish',
+    badge:'Interface', badgeBg:'#E6F1FB', badgeTxt:'#0C447C',
+    goal:'A real usable product. HTTP API so any language can talk to your store. A CLI so you can demo it live in an interview. Clean README. Deployed.',
+    tasks:[
+      {t:'HTTP layer', d:'Thin Spring Boot controller wrapping your KVStore. GET /keys/{key}, POST /keys/{key} with body, DELETE /keys/{key}. Returns JSON.'},
+      {t:'CLI client', d:'kv-cli tool. Reads commands from stdin, sends to server via TCP, prints responses. Like redis-cli but yours.'},
+      {t:'Benchmarking', d:'Write a throughput benchmark: 100k SET operations, measure ops/sec. Compare single-threaded vs thread pool vs ConcurrentHashMap locking.'},
+      {t:'README + architecture doc', d:'Draw the architecture. Document every design decision and why. This is what interviewers read before the interview.'},
+      {t:'Deploy', d:'Docker image. docker-compose.yml spinning up primary + 1 replica. Push to GitHub. Share the link on LinkedIn.'},
+    ],
+    code:`# docker-compose.yml
+services:
+  kv-primary:
+    build: .
+    ports: ["6379:6379", "8080:8080"]
+    environment:
+      ROLE: primary
+      MAX_MEMORY_MB: 256
+      AOF_ENABLED: "true"
+
+  kv-replica:
+    build: .
+    ports: ["6380:6379"]
+    environment:
+      ROLE: replica
+      PRIMARY_HOST: kv-primary
+      PRIMARY_PORT: 6379
+    depends_on: [kv-primary]`,
+    learns:['Docker + docker-compose','Benchmarking methodology','Writing technical documentation','Deployment workflow'],
+    interview:'The GitHub link + docker-compose means an interviewer can clone and run it in 2 minutes. That changes the entire energy of the conversation. You\'re not explaining a side project — you\'re demoing one.'
+  },
+  {
+    n:6, title:'Bonus — consistent hashing + cluster mode',
+    badge:'Bonus', badgeBg:'#E1F5EE', badgeTxt:'#085041',
+    goal:'Optional but exceptional. Shard your keyspace across multiple nodes using consistent hashing. This is what Redis Cluster does. One extra week of work makes this an extraordinary project.',
+    tasks:[
+      {t:'Consistent hashing ring', d:'Hash each node to multiple virtual nodes on a 0–2³² ring. Hash a key → find the next clockwise node. Implement from scratch.'},
+      {t:'Key routing', d:'Client-side router: given a key, hash it, find the right node, forward the request. Returns MOVED error if a request hits the wrong node (Redis Cluster protocol).'},
+      {t:'Node addition', d:'When a new node joins, only keys in its range move. Track what percentage of keys redistributed — it should be ~1/N.'},
+      {t:'Node failure', d:'If a node is unreachable, mark it down. Route its keys to its replica. Promote replica to primary automatically.'},
+    ],
+    code:`// ConsistentHashRing.java
+public class ConsistentHashRing {
+    private final TreeMap<Long, String> ring = new TreeMap<>();
+    private static final int VNODES = 150;
+
+    public void addNode(String nodeId) {
+        for (int i = 0; i < VNODES; i++) {
+            long hash = hash(nodeId + "#" + i);
+            ring.put(hash, nodeId);
+        }
+    }
+    public String getNode(String key) {
+        if (ring.isEmpty()) return null;
+        long hash = hash(key);
+        Map.Entry<Long, String> entry
+            = ring.ceilingEntry(hash);
+        // wrap around the ring
+        return entry != null
+            ? entry.getValue()
+            : ring.firstEntry().getValue();
+    }
+}`,
+    learns:['Consistent hashing — used in Cassandra, DynamoDB, Redis Cluster','Virtual nodes and why they reduce hotspots','Automatic failover logic','This alone is worth 20 minutes of interview conversation'],
+    interview:'If you finish this, you walk into a system design interview and say "I implemented consistent hashing with virtual nodes from scratch." The interviewer will spend most of the interview asking about your project rather than giving you a theoretical problem.'
+  }
+];
+
+const API_COMMANDS = [
+  {cmd:'SET key value [EX seconds]', resp:'+OK', note:'Set a key. Optional TTL.'},
+  {cmd:'GET key', resp:'$value or $-1', note:'Returns value or null.'},
+  {cmd:'DEL key [key ...]', resp:':N', note:'Returns count of deleted keys.'},
+  {cmd:'EXISTS key', resp:':0 or :1', note:'Key exists check.'},
+  {cmd:'EXPIRE key seconds', resp:':0 or :1', note:'Set TTL on existing key.'},
+  {cmd:'TTL key', resp:':seconds or :-1 or :-2', note:'-1=no expiry, -2=not exists.'},
+  {cmd:'PERSIST key', resp:':0 or :1', note:'Remove TTL from key.'},
+  {cmd:'INCR key', resp:':newvalue', note:'Atomic increment. Fails if not integer.'},
+  {cmd:'MSET k1 v1 k2 v2 ...', resp:'+OK', note:'Atomic multi-set.'},
+  {cmd:'MGET k1 k2 ...', resp:'*N array', note:'Multi-get.'},
+  {cmd:'KEYS pattern', resp:'*N array', note:'Pattern match. Avoid in prod — O(N).'},
+  {cmd:'FLUSHALL', resp:'+OK', note:'Wipe everything. Admin only.'},
+  {cmd:'INFO', resp:'$stats string', note:'Memory, ops/sec, replication status.'},
+  {cmd:'REPLCONF', resp:'+OK', note:'Replica handshake command.'},
+  {cmd:'WAIT numreplicas timeout', resp:':N', note:'Block until N replicas ack.'},
+];
+
+const INTERVIEW_QS = [
+  {q:'How does your LRU eviction work?', a:'Doubly linked list + HashMap gives O(1) get and put. On access, move node to front. On eviction, remove from tail. Same as LeetCode 146 — but I built it into a real system.'},
+  {q:'Why ConcurrentHashMap instead of synchronized HashMap?', a:'ConcurrentHashMap uses segment-level locking (Java 8+: CAS + synchronized on individual bins) rather than locking the entire map. Reads are lock-free. This means multiple threads can read simultaneously — critical for a read-heavy cache.'},
+  {q:'How does your replication handle a primary crash?', a:'Replicas track their replication offset. On reconnect, they send their last known offset and request a partial resync from the backlog. If too far behind, they request a full snapshot. For automatic failover, a health-check thread detects primary unavailability and promotes the most up-to-date replica.'},
+  {q:'What happens if two clients SET the same key concurrently?', a:'ConcurrentHashMap\'s put is atomic for a single operation. Last write wins — which is the correct behaviour for a cache. For strict atomicity you\'d need WATCH/MULTI/EXEC transactions, which I\'d add in a next iteration.'},
+  {q:'How does AOF differ from a snapshot?', a:'AOF logs every write command — it\'s the WAL pattern. On crash, you replay the log to reconstruct state. A snapshot serialises the entire keyspace at a point in time — faster to restore but you lose writes since the last snapshot. AOF + snapshot together give you the best of both: fast recovery via snapshot, then replay only the AOF delta since that snapshot.'},
+  {q:'How would you scale reads beyond one replica?', a:'Add more replicas and put a load balancer in front of them. Reads are distributed across replicas, writes go only to primary. This is the read replica pattern used by MySQL, Postgres, and Redis in production.'},
+  {q:'What\'s the memory footprint of your LRU node?', a:'Each Node object has a key (String ref), value (String ref), prev and next pointers — approximately 48 bytes per node on a 64-bit JVM. For 1M entries that\'s ~48MB for the structure alone, plus the actual key/value data.'},
+  {q:'How does consistent hashing reduce resharding cost?', a:'In a naive hash (key % N), adding a node changes the assignment of almost every key. With consistent hashing, only keys in the new node\'s range move — approximately 1/N of total keys. With virtual nodes, load is distributed more evenly so no single physical node becomes a hotspot.'},
+];
+
+let activeTab = 'overview';
+let checks = {};
+
+function renderNav(){
+  document.getElementById('nav').innerHTML = TABS.map(t =>
+    `<button class="nb${t.id===activeTab?' active':''}" onclick="setTab('${t.id}')">${t.label}</button>`
+  ).join('');
+}
+
+function setTab(id){ activeTab=id; renderNav(); renderContent(); }
+
+function toggleCheck(e,k){
+  e.stopPropagation();
+  checks[k]=!checks[k];
+  renderContent();
+}
+
+function renderContent(){
+  const el = document.getElementById('content');
+
+  if(activeTab==='overview'){
+    el.innerHTML=`
+<div class="card highlight">
+  <div class="sl">What you're building</div>
+  <div class="title">A Redis-inspired distributed key-value store — from scratch in Java</div>
+  <div class="sub" style="margin-top:6px">No Redis libraries. No Spring Data. Every component — the storage engine, eviction policy, persistence layer, replication protocol — written by you. This is the project that makes an interviewer lean forward.</div>
+</div>
+<div class="grid2">
+  <div class="card">
+    <div class="sl">Timeline</div>
+    <div class="row"><div class="dot" style="background:#1D9E75"></div><div class="row-text"><strong>5 weeks core</strong> — fully functional store with persistence + replication</div></div>
+    <div class="row"><div class="dot" style="background:#534AB7"></div><div class="row-text"><strong>+1 week bonus</strong> — consistent hashing cluster mode (exceptional)</div></div>
+    <div class="row"><div class="dot" style="background:#D85A30"></div><div class="row-text"><strong>~2hrs/day evenings</strong> — fits your current schedule</div></div>
+  </div>
+  <div class="card">
+    <div class="sl">What it teaches you directly</div>
+    <div class="row"><div class="dot" style="background:#1D9E75"></div><div class="row-text">LRU cache from scratch (LeetCode 146 — in production)</div></div>
+    <div class="row"><div class="dot" style="background:#534AB7"></div><div class="row-text">Write-Ahead Log / AOF persistence (every DB uses this)</div></div>
+    <div class="row"><div class="dot" style="background:#D85A30"></div><div class="row-text">Primary-replica replication (MySQL, Postgres, Redis)</div></div>
+    <div class="row"><div class="dot" style="background:#BA7517"></div><div class="row-text">Consistent hashing (DynamoDB, Cassandra, Redis Cluster)</div></div>
+    <div class="row"><div class="dot" style="background:#0C447C"></div><div class="row-text">Java concurrency — ConcurrentHashMap, ExecutorService, CAS</div></div>
+  </div>
+</div>
+<div class="card">
+  <div class="sl">Resume line (after completion)</div>
+  <div class="sub" style="font-style:italic">"Built a Redis-inspired distributed key-value store in Java from scratch — LRU eviction, TTL, AOF persistence, primary-replica replication with partial resync, and consistent hashing cluster mode. Benchmarked at 120k ops/sec on a single node."</div>
+  <div class="interview-box">Every word in that sentence is an interview conversation. Interviewers will ask about LRU, AOF, replication lag, consistent hashing. You have real answers for all of them — because you built it.</div>
+</div>
+<div class="card">
+  <div class="sl">Tech stack</div>
+  <div class="pills">
+    <span class="pill must">Java 17+</span>
+    <span class="pill must">ConcurrentHashMap</span>
+    <span class="pill must">ExecutorService</span>
+    <span class="pill must">TCP ServerSocket</span>
+    <span class="pill core">Spring Boot (HTTP layer only)</span>
+    <span class="pill core">JUnit 5</span>
+    <span class="pill core">Docker + docker-compose</span>
+    <span class="pill bonus">Consistent hashing (Week 6)</span>
+  </div>
+</div>`;
+  }
+
+  else if(activeTab==='arch'){
+    el.innerHTML=`
+<div class="card">
+  <div class="sl">Layer architecture</div>
+  <div class="sub">Each layer has one job. This is how real databases are structured.</div>
+</div>
+${[
+  {layer:'Client layer', desc:'TCP socket clients or HTTP via Spring Boot thin wrapper. Sends raw text commands. Multiple concurrent clients handled by thread pool.', color:'#EEEDFE', tc:'#3C3489', dot:'#534AB7'},
+  {layer:'Protocol layer', desc:'CommandParser reads raw bytes, tokenises into Command objects (type, key, args). Serialises responses back to RESP-like format (+OK, $value, :integer, *array).', color:'#E6F1FB', tc:'#0C447C', dot:'#185FA5'},
+  {layer:'Engine layer', desc:'KVStore — the core. ConcurrentHashMap<String, ValueEntry>. All reads and writes go here. Thread-safe. Notifies AOFWriter and ReplicationManager on every write.', color:'#E1F5EE', tc:'#085041', dot:'#1D9E75'},
+  {layer:'Memory management layer', desc:'LRUCache tracks access order. Background thread runs lazy expiry sweep every 100ms. When heap > MAX_MEMORY, evicts LRU keys until under threshold.', color:'#FAEEDA', tc:'#633806', dot:'#BA7517'},
+  {layer:'Persistence layer', desc:'AOFWriter appends every command to disk. SnapshotManager serialises keyspace every 60s or 10k writes. Both feed into CrashRecovery on startup.', color:'#FAECE7', tc:'#712B13', dot:'#D85A30'},
+  {layer:'Replication layer', desc:'ReplicationManager maintains connections to all replicas. Propagates every write command. Tracks per-replica offset. Handles partial resync vs full snapshot for reconnecting replicas.', color:'#EEEDFE', tc:'#3C3489', dot:'#534AB7'},
+].map(l=>`
+<div class="card" style="border-left:3px solid ${l.dot};border-radius:0 var(--border-radius-lg) var(--border-radius-lg) 0">
+  <div class="title">${l.layer}</div>
+  <div class="sub">${l.desc}</div>
+</div>`).join('')}
+<div class="card">
+  <div class="sl">Package structure</div>
+  <div class="code">src/main/java/com/somesh/kvstore/
+├── engine/
+│   ├── KVStore.java          // core storage, main API
+│   ├── ValueEntry.java       // value + expiry metadata
+│   └── CommandExecutor.java  // routes commands to engine
+├── memory/
+│   ├── LRUCache.java         // doubly linked list + hashmap
+│   └── ExpiryManager.java    // background expiry sweep
+├── persistence/
+│   ├── AOFWriter.java        // append-only file log
+│   ├── SnapshotManager.java  // periodic full snapshot
+│   └── CrashRecovery.java    // replay AOF/snapshot on start
+├── protocol/
+│   ├── CommandParser.java    // parse raw bytes → Command
+│   ├── ResponseSerializer.java
+│   └── Command.java          // enum + args
+├── server/
+│   ├── TcpServer.java        // ServerSocket + thread pool
+│   └── ClientHandler.java    // per-client read/write loop
+├── replication/
+│   ├── ReplicationManager.java
+│   ├── ReplicaConnection.java
+│   └── RingBuffer.java       // circular command backlog
+└── cluster/
+    └── ConsistentHashRing.java // Week 6 bonus</div>
+</div>`;
+  }
+
+  else if(activeTab==='plan'){
+    const totalChecks = WEEKS.reduce((a,w)=>a+w.tasks.length,0);
+    const doneChecks = Object.values(checks).filter(Boolean).length;
+    const pct = Math.round(doneChecks/totalChecks*100);
+
+    el.innerHTML=`
+<div class="card">
+  <div class="sl">Overall progress</div>
+  <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+    <div class="prog-wrap" style="flex:1"><div class="prog-fill" style="width:${pct}%"></div></div>
+    <span style="font-size:12px;color:var(--color-text-secondary)">${doneChecks}/${totalChecks} tasks · ${pct}%</span>
+  </div>
+</div>
+${WEEKS.map(w=>`
+<div class="card">
+  <span class="week-badge" style="background:${w.badgeBg};color:${w.badgeTxt}">Week ${w.n} — ${w.badge}</span>
+  <div class="title">${w.title}</div>
+  <div class="sub" style="margin:6px 0 10px">${w.goal}</div>
+  <div class="sl">Tasks</div>
+  ${w.tasks.map((t,i)=>{
+    const k=`w${w.n}_t${i}`;
+    return `<div class="check">
+      <div class="check-box${checks[k]?' done':''}" onclick="toggleCheck(event,'${k}')"></div>
+      <div class="check-label"><strong>${t.t}</strong> — ${t.d}</div>
+    </div>`;
+  }).join('')}
+  <div class="sl" style="margin-top:10px">Key code</div>
+  <div class="code">${w.code.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+  <div class="sl">What you'll learn by end of week</div>
+  <div class="pills">${w.learns.map(l=>`<span class="pill core">${l}</span>`).join('')}</div>
+  <div class="interview-box" style="margin-top:8px">${w.interview}</div>
+</div>`).join('')}`;
+  }
+
+  else if(activeTab==='api'){
+    el.innerHTML=`
+<div class="card">
+  <div class="sl">Command protocol</div>
+  <div class="sub">Text-based protocol over TCP. Each command is a newline-terminated string. Responses follow RESP-lite format: + for simple strings, $ for bulk strings, : for integers, * for arrays.</div>
+</div>
+${API_COMMANDS.map(c=>`
+<div class="card">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap">
+    <div class="code" style="margin:0;flex:1">${c.cmd}</div>
+    <span class="pill core" style="flex-shrink:0">${c.resp}</span>
+  </div>
+  <div class="sub" style="margin-top:6px">${c.note}</div>
+</div>`).join('')}
+<div class="card">
+  <div class="sl">HTTP API (Spring Boot wrapper — Week 5)</div>
+  <div class="code">GET    /api/keys/{key}           → {"key":"x","value":"y","ttl":30}
+POST   /api/keys/{key}           body: {"value":"y","ttlSeconds":30}
+DELETE /api/keys/{key}           → {"deleted":true}
+GET    /api/keys?pattern=user:*  → {"keys":["user:1","user:2"]}
+GET    /api/info                 → {"ops_per_sec":12043,"mem_mb":84,...}
+POST   /api/admin/flush          → {"flushed":true}</div>
+</div>`;
+  }
+
+  else if(activeTab==='deep'){
+    el.innerHTML=`
+${[
+  {
+    title:'Why CAS over synchronized for the engine',
+    sub:'ConcurrentHashMap in Java 8+ uses Compare-And-Swap (CAS) for most operations. On a GET, no lock is acquired at all — threads read concurrently. On a SET, only the individual bin (hash bucket) is locked, not the entire map. This gives you near-linear read scaling with CPU cores. A synchronized HashMap holds one global lock — every read and write blocks all others.',
+    color:'#534AB7'
+  },
+  {
+    title:'LRU vs LFU vs FIFO — which to implement and when',
+    sub:'LRU (Least Recently Used) is correct for most caches because it captures temporal locality — if you accessed something recently, you\'ll likely access it again soon. LFU (Least Frequently Used) is better for stable popularity distributions (like a music streaming cache) but harder to implement and can lock in old popular items. FIFO is simple but ignores access patterns entirely. Build LRU. Know LFU conceptually.',
+    color:'#1D9E75'
+  },
+  {
+    title:'AOF vs Snapshot — when to use each',
+    sub:'AOF gives you the strongest durability guarantee — you can lose at most 1 second of writes (with fsync every second). But replaying a large AOF on startup is slow. A Snapshot restores in seconds but you lose all writes since the last snapshot. Production Redis uses both: load the snapshot first, then replay only the AOF commands written after the snapshot timestamp. That\'s what you build in Week 3.',
+    color:'#BA7517'
+  },
+  {
+    title:'Replication lag — the unsolved problem',
+    sub:'Asynchronous replication means the primary acknowledges a write before the replica applies it. If the primary crashes after acknowledging but before the replica syncs, that write is lost. This is called replication lag. Solutions: synchronous replication (WAIT command — primary blocks until N replicas ack), or accept eventual consistency. Redis defaults to async. MySQL has semi-synchronous. Postgres has synchronous_commit. Your WAIT command implementation directly addresses this.',
+    color:'#D85A30'
+  },
+  {
+    title:'Consistent hashing — why 150 virtual nodes',
+    sub:'With only one hash per physical node, the distribution is uneven — some nodes get more keys than others. Virtual nodes (vnodes) map each physical node to multiple positions on the ring. More positions = more uniform key distribution. 150 vnodes per physical node (Redis Cluster uses 16384 hash slots) gives you roughly ±5% variance in key distribution. When you add a new node, you add 150 new positions, and keys are redistributed from the 150 neighbouring positions on the ring — not from all N*150 positions.',
+    color:'#0C447C'
+  },
+].map(d=>`
+<div class="card" style="border-left:3px solid ${d.color};border-radius:0 var(--border-radius-lg) var(--border-radius-lg) 0">
+  <div class="title">${d.title}</div>
+  <div class="sub" style="margin-top:6px">${d.sub}</div>
+</div>`).join('')}`;
+  }
+
+  else if(activeTab==='interview'){
+    el.innerHTML=`
+<div class="card">
+  <div class="sl">How to present this project in an interview</div>
+  <div class="sub">Don\'t walk through the code. Walk through the decisions. Lead with: "I built a Redis-inspired key-value store from scratch in Java — I wanted to understand exactly what Redis is doing under the hood." Then let the interviewer pull on the thread they\'re most interested in.</div>
+  <div class="warn-box">The magic phrase: "I built it because every system design interview assumes you understand what Redis does internally — I wanted real answers, not memorised ones."</div>
+</div>
+${INTERVIEW_QS.map((q,i)=>`
+<div class="card">
+  <div class="sl">Question ${i+1}</div>
+  <div class="title" style="margin-bottom:8px">${q.q}</div>
+  <div class="sub" style="background:var(--color-background-secondary);padding:8px 10px;border-radius:var(--border-radius-md)">${q.a}</div>
+</div>`).join('')}
+<div class="card">
+  <div class="sl">The conversation you want to have</div>
+  <div class="sub">The best interview outcome is when the interviewer abandons their prepared questions and just asks about your project. That happens when your first answer is so specific and confident that they realise you actually built this. Lead every answer with the decision, not the implementation: "I chose ConcurrentHashMap because..." not "I used ConcurrentHashMap which is..."</div>
+</div>`;
+  }
+}
+
+renderNav();
+renderContent();
+</script>

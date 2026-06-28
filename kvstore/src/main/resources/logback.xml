@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <!--
+        Console appender — all logs go to stdout during development.
+        In production you'd add a RollingFileAppender here.
+    -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <!--
+                Pattern breakdown:
+                  %d{HH:mm:ss.SSS}  — timestamp (hour:min:sec.millis)
+                  %-5level          — log level, left-padded to 5 chars (DEBUG, INFO, WARN, ERROR)
+                  [%thread]         — thread name — critical for a multi-threaded server,
+                                      shows you which ClientHandler thread is logging
+                  %logger{36}       — logger name (class name), truncated to 36 chars
+                  %msg%n            — the actual message + newline
+            -->
+            <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!--
+        Root logger level: DEBUG during development so you see everything.
+        Change to INFO before any performance testing — DEBUG logging
+        inside hot paths (like the ClientHandler read loop) adds measurable latency.
+    -->
+    <root level="DEBUG">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+    <!--
+        Suppress noisy Netty/NIO logs if you add them later.
+        Example:
+        <logger name="io.netty" level="WARN"/>
+    -->
+
+</configuration>
