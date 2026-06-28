@@ -117,9 +117,12 @@ POST   /api/admin/flush          → {"flushed":true}
 ### Single node
 
 ```bash
-mvn clean package -q
+JAVA_HOME=/opt/homebrew/Cellar/openjdk@21/21.0.11/libexec/openjdk.jdk/Contents/Home \
+  mvn clean package -q
 java -jar target/kvstore-0.1.0-SNAPSHOT.jar
 ```
+
+> **Tip:** add `export JAVA_HOME=<path-above>` to your shell profile so Maven always picks up JDK 21.
 
 ### Primary + replica (docker-compose)
 
@@ -152,7 +155,8 @@ services:
 ### Tests
 
 ```bash
-mvn test
+JAVA_HOME=/opt/homebrew/Cellar/openjdk@21/21.0.11/libexec/openjdk.jdk/Contents/Home \
+  mvn test
 ```
 
 ---
@@ -209,8 +213,18 @@ mvn test
 
 ## Project Status
 
-- [x] Week 1 — Core engine scaffolded (`KVStore`, `TcpServer`, `CommandParser`)
-- [ ] Week 2 — LRU + TTL
+- [x] Week 1 — Core engine complete
+  - `KVStore` — `ConcurrentHashMap` store with `set` / `get` / `del` / `exists` / `pttl`
+  - `ValueEntry` — immutable value + TTL with lazy expiry
+  - `CommandResult` — typed RESP result (OK / STRING / INTEGER / ERROR)
+  - `CommandExecutor` — dispatch table routing SET / GET / DEL / EXISTS / PTTL / PING
+  - `CommandType` + `Command` — parsed command value objects
+  - `CommandParser` — inline text → `Command`
+  - `ResponseSerializer` — `CommandResult` → RESP-lite wire bytes
+  - `TcpServer` — `ServerSocket` + cached thread pool
+  - `ClientHandler` — per-client read/parse/execute/write loop
+  - `Main` — wires store + server, binds port 6379
+- [ ] Week 2 — LRU + TTL (`EXPIRE`, `TTL`, `PERSIST`, `INCR`, `ExpiryManager`, `LRUCache`)
 - [ ] Week 3 — AOF + Snapshot persistence
 - [ ] Week 4 — Primary-replica replication
 - [ ] Week 5 — HTTP API + Docker
