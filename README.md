@@ -163,14 +163,24 @@ JAVA_HOME=/opt/homebrew/Cellar/openjdk@21/21.0.11/libexec/openjdk.jdk/Contents/H
 
 ## Build Plan (Week-by-Week)
 
-| Week | Module | Goal |
-|---|---|---|
-| 1 | Core engine | `GET` / `SET` / `DEL` in memory over TCP |
-| 2 | TTL + LRU eviction | Keys expire; LRU eviction when over memory limit |
-| 3 | Persistence | AOF + snapshot; crash-safe restart |
-| 4 | Replication | Primary-replica sync with partial resync + `WAIT` |
-| 5 | HTTP API + CLI | Spring Boot wrapper, Docker image, docker-compose |
-| 6 | Cluster (bonus) | Consistent hashing, virtual nodes, automatic failover |
+| Week | Module | Goal | Status |
+|---|---|---|---|
+| 1 | Core engine | `GET` / `SET` / `DEL` in memory over TCP | ✅ Complete |
+| 2 | TTL + LRU eviction | Keys expire; LRU eviction when over memory limit | pending |
+| 3 | Persistence | AOF + snapshot; crash-safe restart | pending |
+| 4 | Replication | Primary-replica sync with partial resync + `WAIT` | pending |
+| 5 | HTTP API + CLI | Spring Boot wrapper, Docker image, docker-compose | pending |
+| 6 | Cluster (bonus) | Consistent hashing, virtual nodes, automatic failover | pending |
+
+### Week 1 — What was built
+
+- **`KVStore`** — `ConcurrentHashMap`-backed store; thread-safe `GET`, `SET`, `DEL`, `EXISTS`, `PING`
+- **`CommandParser`** — parses inline and multi-bulk RESP wire format into typed `Command` objects
+- **`ResponseSerializer`** — emits `+OK`, `$bulk`, `:integer`, `-ERR` per the RESP-lite spec
+- **`TcpServer`** — `ServerSocket` accept loop dispatching each client connection to a fixed thread pool (10 threads)
+- **`ClientHandler`** — per-client read/write loop; reads until disconnect, writes serialized response
+- **`ServerConfig`** — single constants file (port 6379, pool size, backlog, CRLF)
+- **53 unit tests** across engine, parser, and serializer — all green
 
 ---
 

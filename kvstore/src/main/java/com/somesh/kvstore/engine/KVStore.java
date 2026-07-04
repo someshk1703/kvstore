@@ -2,12 +2,7 @@ package com.somesh.kvstore.engine;
 
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 public class KVStore {
-
-    private static final Logger log = LoggerFactory.getLogger(KVStore.class);
 
     private final ConcurrentHashMap<String, ValueEntry> store =
             new ConcurrentHashMap<>(256);
@@ -15,10 +10,8 @@ public class KVStore {
     // ── Write operations ────────────────────────────────────────────
 
     public String set(String key, String value, long ttlMs) {
-        ValueEntry newEntry = new ValueEntry(value, ttlMs);
-        ValueEntry previous = store.put(key, newEntry);
-        log.debug("SET {} ttl={}ms (was={})", key, ttlMs,
-                previous == null ? "null" : previous.value);
+        ValueEntry newEntry  = new ValueEntry(value, ttlMs);
+        ValueEntry previous  = store.put(key, newEntry);
         return previous == null ? null : previous.value;
     }
 
@@ -66,7 +59,6 @@ public class KVStore {
         return store.size();
     }
 
-    /** For ExpiryManager sweep only — do not use for reads. */
     public ConcurrentHashMap<String, ValueEntry> getStore() {
         return store;
     }
