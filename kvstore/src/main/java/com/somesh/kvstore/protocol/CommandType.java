@@ -21,6 +21,11 @@ public enum CommandType {
     PTTL  (1, 1),
     PING  (0, 1),   // PING [message]
 
+    // Week 2 — TTL management
+    EXPIRE (2, 2),  // EXPIRE key seconds
+    TTL    (1, 1),  // TTL key  → remaining seconds, -1 = no expiry, -2 = missing
+    PERSIST(1, 1),  // PERSIST key → remove TTL
+
     // Sentinel for unknown commands
     UNKNOWN(0, -1);
 

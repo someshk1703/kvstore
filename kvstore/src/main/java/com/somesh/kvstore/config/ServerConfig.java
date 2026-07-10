@@ -113,6 +113,25 @@ public final class ServerConfig {
      */
     public static final int MAX_KEYS_PER_SWEEP = 20;
 
+    /**
+     * Maximum number of entries tracked by the LRU cache.
+     *
+     * <p>When the store exceeds this many keys, the LRU eviction logic
+     * removes the least-recently-used entries until the count is back
+     * within bounds. Setting to a large value effectively disables
+     * eviction (relying on MAX_MEMORY_BYTES alone).
+     */
+    public static final int LRU_CAPACITY = 100_000;
+
+    /**
+     * Once eviction starts (memory > MAX_MEMORY_BYTES), keys are evicted
+     * until memory drops below this fraction of MAX_MEMORY_BYTES.
+     *
+     * <p>0.80 = 80%. Mirrors Redis's "maxmemory-samples" approach of
+     * targeting a safe headroom below the hard limit to avoid thrashing.
+     */
+    public static final double EVICTION_TARGET_RATIO = 0.80;
+
 
     // ──────────────────────────────────────────────────────────────
     // Persistence (Week 2–3)
