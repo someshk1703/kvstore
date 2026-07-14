@@ -44,9 +44,9 @@ com.somesh.kvstore
 ### Week-by-week milestones
 | Week | Focus | Status |
 |---|---|---|
-| 1 | Core engine — GET/SET/DEL over TCP | scaffolded |
-| 2 | TTL + LRU eviction | pending |
-| 3 | AOF + Snapshot persistence | pending |
+| 1 | Core engine — GET/SET/DEL over TCP | completed |
+| 2 | TTL + LRU eviction | completed |
+| 3 | AOF + Snapshot persistence | completed |
 | 4 | Primary-replica replication | pending |
 | 5 | HTTP API (Spring Boot) + Docker | pending |
 | 6 | Consistent hashing cluster (bonus) | pending |

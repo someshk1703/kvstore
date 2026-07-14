@@ -1,12 +1,16 @@
 package com.somesh.kvstore.engine;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.somesh.kvstore.persistence.AOFWriter;
+import com.somesh.kvstore.persistence.SnapshotManager;
 import com.somesh.kvstore.protocol.Command;
 import com.somesh.kvstore.protocol.CommandType;
 
@@ -24,19 +28,52 @@ import com.somesh.kvstore.protocol.CommandType;
  *   - Parsing raw bytes (CommandParser does that)
  *   - Serializing responses (ResponseSerializer does that)
  *   - Storage mechanics (KVStore does that)
+ *
+ * <h2>Week 3 additions — persistence wiring</h2>
+ * {@link AOFWriter} and {@link SnapshotManager} are optional collaborators set via
+ * setters. When {@code aofWriter} is non-null, every successful write command is
+ * appended to the AOF after the in-memory store is updated. When {@code null}
+ * (replay mode), commands execute silently — preventing re-logging of replayed
+ * commands.
  */
 public class CommandExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(CommandExecutor.class);
 
+    /** Command types that mutate state and must be logged to the AOF. */
+    private static final Set<CommandType> WRITE_COMMANDS =
+        Set.of(CommandType.SET, CommandType.DEL, CommandType.EXPIRE, CommandType.PERSIST);
+
     private final KVStore kvStore;
+
+    // Persistence collaborators — null in replay mode
+    private volatile AOFWriter       aofWriter;
+    private volatile SnapshotManager snapshotManager;
 
     // Dispatch table: CommandType → handler method
     private final Map<CommandType, Function<Command, CommandResult>> handlers;
 
     public CommandExecutor(KVStore kvStore) {
-        this.kvStore = kvStore;
+        this.kvStore  = kvStore;
         this.handlers = buildHandlerMap();
+    }
+
+    // ── Persistence wiring ──────────────────────────────────────────
+
+    /**
+     * Attach an {@link AOFWriter}. Set to {@code null} to enter replay mode
+     * (commands execute without being logged back to the AOF).
+     */
+    public void setAofWriter(AOFWriter aofWriter) {
+        this.aofWriter = aofWriter;
+    }
+
+    /**
+     * Attach a {@link SnapshotManager} to track write counts and trigger
+     * write-threshold-based snapshots. Set to {@code null} to disable.
+     */
+    public void setSnapshotManager(SnapshotManager snapshotManager) {
+        this.snapshotManager = snapshotManager;
     }
 
     // ── Public API ──────────────────────────────────────────────────
@@ -55,7 +92,14 @@ public class CommandExecutor {
         }
 
         try {
-            return handler.apply(cmd);
+            CommandResult result = handler.apply(cmd);
+            // Log successful write commands to AOF (only in normal mode, not replay)
+            if (result.type != CommandResult.Type.ERROR
+                    && WRITE_COMMANDS.contains(cmd.type())) {
+                logToAof(cmd);
+                notifySnapshot();
+            }
+            return result;
         } catch (Exception e) {
             // Defensive: handler bugs should not crash ClientHandler thread
             log.error("Unexpected error executing command {}: {}", cmd.type(), e.getMessage(), e);
@@ -257,5 +301,29 @@ public class CommandExecutor {
         } catch (NumberFormatException e) {
             return -1;
         }
+    }
+
+    /**
+     * Append the command to the AOF if an {@link AOFWriter} is wired in.
+     *
+     * <p>{@link Command#toString()} produces {@code "SET foo bar EX 30"} — exactly
+     * the inline text format the AOF uses.
+     */
+    private void logToAof(Command cmd) {
+        AOFWriter w = aofWriter;   // local copy for thread safety
+        if (w == null) return;
+        try {
+            w.log(cmd.toString());
+        } catch (IOException e) {
+            // AOF write failure is serious but should not kill the client thread.
+            // Log and continue — the key is in memory; durability is degraded.
+            log.error("AOF write failed for command '{}': {}", cmd, e.getMessage(), e);
+        }
+    }
+
+    /** Notify the snapshot manager that a write has occurred. */
+    private void notifySnapshot() {
+        SnapshotManager sm = snapshotManager;
+        if (sm != null) sm.onWrite();
     }
 }

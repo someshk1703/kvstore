@@ -140,6 +140,16 @@ public final class ServerConfig {
     /** Path to the Append-Only File. Relative to the working directory. */
     public static final String AOF_FILE_PATH = "data/kvstore.aof";
 
+    /**
+     * Default fsync mode for the AOF.
+     *
+     * <p>{@code ALWAYS} = flush after every write (strongest durability, lowest throughput).
+     * {@code EVERYSEC} = background flush every second (at most 1 s of data loss).
+     * Default is ALWAYS for correctness; tune to EVERYSEC for higher throughput.
+     */
+    public static final com.somesh.kvstore.persistence.AOFWriter.FsyncMode AOF_FSYNC_MODE =
+        com.somesh.kvstore.persistence.AOFWriter.FsyncMode.ALWAYS;
+
     /** Path to the RDB-style snapshot file. */
     public static final String SNAPSHOT_FILE_PATH = "data/kvstore.rdb";
 
