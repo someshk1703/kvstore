@@ -77,6 +77,26 @@ src/main/java/com/somesh/kvstore/
 
 ---
 
+## Live Demo
+
+**Live instance:** [https://kvstore-production.up.railway.app/dashboard.html](https://kvstore-production.up.railway.app/dashboard.html)
+
+The dashboard shows live store stats (key count, memory usage, uptime) and updates automatically via polling every 3 seconds. It also includes a command console wired to the REST API — type `SET foo bar`, `GET foo`, `DEL foo`, `KEYS user:*`, or `PING` and see real responses from the running instance.
+
+**What the dashboard actually does** (no invented features):
+- Polls `/api/info` every 3 s for `totalKeys`, `usedMemoryBytes`, `maxMemoryBytes`, `uptimeSeconds`, `version`.
+- Polls `/api/health` every 3 s for the UP/DOWN status indicator.
+- Command console routes to real REST endpoints: `SET` → `POST /api/keys/{key}`, `GET` → `GET /api/keys/{key}`, `DEL` → `DELETE /api/keys/{key}`, `KEYS` → `GET /api/keys?pattern=...`, `PING` → `GET /api/health`.
+- The "persistence & replication" panel shows fields labeled "not exposed yet" — those metrics are not in `/api/info` and are not fabricated.
+
+**Run the dashboard locally:**
+1. Start the server with `--http`: `java -jar kvstore/target/kvstore-0.1.0-SNAPSHOT.jar --http`
+2. Open [http://localhost:8080/dashboard.html](http://localhost:8080/dashboard.html)
+
+The dashboard is a static HTML file served by Spring Boot from `kvstore/src/main/resources/static/dashboard.html`. It makes requests to relative paths (`/api/info`, `/api/health`), so it works against any host it is loaded from.
+
+---
+
 ## Command Reference
 
 | Command | Response | Notes |
