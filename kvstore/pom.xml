@@ -149,6 +149,9 @@
                     <compilerArgs>
                         <arg>-Xlint:all</arg>
                         <arg>-Xlint:-processing</arg>
+                        <!-- Required by Spring MVC to resolve @PathVariable /
+                             @RequestParam names without explicit annotation values. -->
+                        <arg>-parameters</arg>
                     </compilerArgs>
                 </configuration>
             </plugin>
