@@ -10,13 +10,13 @@ WORKDIR /build
 
 # Copy dependency metadata first so Docker can cache the dependency-download
 # layer separately from source changes. This makes subsequent builds faster.
-COPY pom.xml .
+COPY kvstore/pom.xml .
 RUN mvn dependency:go-offline -q
 
 # Now copy source and build. -DskipTests is intentional: tests run in CI, not
 # in the Dockerfile. The fat JAR produced by spring-boot-maven-plugin is what
 # we deploy.
-COPY src/ src/
+COPY kvstore/src/ src/
 RUN mvn clean package -DskipTests -q
 
 # ────────────────────────────────────────────────────────────────────────────
