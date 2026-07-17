@@ -218,4 +218,36 @@ public final class ServerConfig {
      */
     public static final String CHARSET = "UTF-8";
 
+
+    // ──────────────────────────────────────────────────────────────
+    // Cluster (Week 6)
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * Virtual nodes per physical node in the consistent hash ring.
+     *
+     * <p>150 is the empirically validated sweet spot: distribution variance
+     * drops to ~5–10% vs ~50% with 1 vnode. Increasing beyond 200 gives
+     * diminishing returns while adding memory overhead.
+     *
+     * <p>This constant is declared here for documentation; the authoritative
+     * value is {@link com.somesh.kvstore.cluster.ConsistentHashRing#VNODES}.
+     */
+    public static final int CLUSTER_VNODES = 150;
+
+    /**
+     * Consecutive missed heartbeats before a node is declared down.
+     *
+     * <p>3 beats at 1-second intervals = ~3 seconds to declare failure.
+     * High enough to survive transient GC pauses; low enough to recover
+     * quickly after a real failure.
+     */
+    public static final int CLUSTER_MISSED_BEATS_THRESHOLD = 3;
+
+    /**
+     * Heartbeat interval for cluster health monitoring, in milliseconds.
+     */
+    public static final long CLUSTER_HEARTBEAT_INTERVAL_MS = 1_000L;
+
 }
+

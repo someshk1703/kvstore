@@ -30,7 +30,7 @@ com.somesh.kvstore
 ├── protocol/     – CommandParser, ResponseSerializer, Command enum
 ├── server/       – TcpServer (ServerSocket + thread pool), ClientHandler
 ├── replication/  – ReplicationManager, ReplicaConnection, RingBuffer
-└── cluster/      – ConsistentHashRing (Week 6 bonus)
+└── cluster/      – ConsistentHashRing (TreeMap + 150 vnodes), NodeInfo, ClusterRouter (MOVED), ClusterManager (failover), HealthMonitor
 ```
 
 ### Key design constraints
@@ -48,8 +48,8 @@ com.somesh.kvstore
 | 2 | TTL + LRU eviction | completed |
 | 3 | AOF + Snapshot persistence | completed |
 | 4 | Primary-replica replication | completed |
-| 5 | HTTP API (Spring Boot) + Docker | pending |
-| 6 | Consistent hashing cluster (bonus) | pending |
+| 5 | HTTP API (Spring Boot) + Docker | completed |
+| 6 | Consistent hashing cluster (bonus) | completed |
 
 For the full spec see `plan/kv_store_spec.html`.  
 For the implementation plan see `plan/Build.md`.
