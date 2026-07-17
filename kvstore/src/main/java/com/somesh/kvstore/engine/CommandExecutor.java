@@ -13,6 +13,7 @@ import com.somesh.kvstore.persistence.AOFWriter;
 import com.somesh.kvstore.persistence.SnapshotManager;
 import com.somesh.kvstore.protocol.Command;
 import com.somesh.kvstore.protocol.CommandType;
+import com.somesh.kvstore.replication.ReplicationManager;
 
 /**
  * Routes parsed Command objects to the appropriate KVStore operation
@@ -35,6 +36,12 @@ import com.somesh.kvstore.protocol.CommandType;
  * appended to the AOF after the in-memory store is updated. When {@code null}
  * (replay mode), commands execute silently — preventing re-logging of replayed
  * commands.
+ *
+ * <h2>Week 4 additions — replication wiring</h2>
+ * {@link ReplicationManager} is an optional collaborator. When set, every
+ * successful write command is propagated to replicas after the local store
+ * is updated. In replica mode ({@link #setReplicaMode(boolean)}), write
+ * commands from external clients are rejected with an error.
  */
 public class CommandExecutor {
 
@@ -47,8 +54,14 @@ public class CommandExecutor {
     private final KVStore kvStore;
 
     // Persistence collaborators — null in replay mode
-    private volatile AOFWriter       aofWriter;
-    private volatile SnapshotManager snapshotManager;
+    private volatile AOFWriter          aofWriter;
+    private volatile SnapshotManager    snapshotManager;
+
+    // Replication collaborator — null when not primary
+    private volatile ReplicationManager replicationManager;
+
+    // When true, reject write commands from external clients (we are a replica)
+    private volatile boolean            replicaMode = false;
 
     // Dispatch table: CommandType → handler method
     private final Map<CommandType, Function<Command, CommandResult>> handlers;
@@ -76,6 +89,29 @@ public class CommandExecutor {
         this.snapshotManager = snapshotManager;
     }
 
+    // ── Replication wiring ──────────────────────────────────────────
+
+    /**
+     * Attach a {@link ReplicationManager}. When set, every successful write
+     * command is propagated to connected replicas after the local store update.
+     * Set to {@code null} to disable (standalone mode, or replica mode).
+     */
+    public void setReplicationManager(ReplicationManager replicationManager) {
+        this.replicationManager = replicationManager;
+    }
+
+    /**
+     * Enable or disable replica mode.
+     * In replica mode, write commands from external clients are rejected.
+     * Replication-applied commands (via {@link #execute}) still succeed because
+     * they arrive via the replication path, not client connections.
+     *
+     * @param replicaMode {@code true} to enter replica (read-only) mode
+     */
+    public void setReplicaMode(boolean replicaMode) {
+        this.replicaMode = replicaMode;
+    }
+
     // ── Public API ──────────────────────────────────────────────────
 
     /**
@@ -83,6 +119,12 @@ public class CommandExecutor {
      * Never throws — all errors are returned as CommandResult.error().
      */
     public CommandResult execute(Command cmd) {
+        // Replica mode: reject write commands from external clients
+        if (replicaMode && WRITE_COMMANDS.contains(cmd.type())) {
+            return CommandResult.error(
+                "READONLY You can't write against a read only replica.");
+        }
+
         Function<Command, CommandResult> handler = handlers.get(cmd.type());
 
         if (handler == null) {
@@ -98,6 +140,7 @@ public class CommandExecutor {
                     && WRITE_COMMANDS.contains(cmd.type())) {
                 logToAof(cmd);
                 notifySnapshot();
+                propagateToReplicas(cmd);
             }
             return result;
         } catch (Exception e) {
@@ -121,6 +164,10 @@ public class CommandExecutor {
         map.put(CommandType.EXPIRE,  this::handleExpire);
         map.put(CommandType.TTL,     this::handleTtl);
         map.put(CommandType.PERSIST, this::handlePersist);
+        // Week 4 — Replication
+        map.put(CommandType.WAIT,     this::handleWait);
+        map.put(CommandType.REPLCONF, this::handleReplconf);
+        map.put(CommandType.REPLINFO, this::handleReplinfo);
         return Map.copyOf(map);   // immutable after construction
     }
 
@@ -325,5 +372,78 @@ public class CommandExecutor {
     private void notifySnapshot() {
         SnapshotManager sm = snapshotManager;
         if (sm != null) sm.onWrite();
+    }
+
+    /**
+     * Propagate a write command to replicas via the {@link ReplicationManager}.
+     *
+     * <p>Called after the local store is updated and AOF is written.
+     * {@code cmd.toString()} produces the inline text format (e.g. "SET foo bar EX 30").
+     */
+    private void propagateToReplicas(Command cmd) {
+        ReplicationManager rm = replicationManager;
+        if (rm != null) {
+            rm.propagate(cmd.toString());
+        }
+    }
+
+    // ── Week 4 handlers — Replication ───────────────────────────────
+
+    /**
+     * WAIT numreplicas timeoutMs
+     *
+     * Blocks until at least {@code numreplicas} replicas have acknowledged the
+     * current write offset, or {@code timeoutMs} elapses.
+     * Returns the count of replicas that have acked.
+     *
+     * <p>If no {@link ReplicationManager} is wired, returns 0 immediately
+     * (standalone mode — no replicas exist).
+     *
+     * <p>Example: {@code WAIT 1 100} → ":1" if one replica acks within 100ms.
+     */
+    private CommandResult handleWait(Command cmd) {
+        if (cmd.argCount() != 2) {
+            return CommandResult.error("ERR wrong number of arguments for 'wait' command");
+        }
+        long numReplicas = parseLong(cmd.arg(0));
+        long timeoutMs   = parseLong(cmd.arg(1));
+        if (numReplicas < 0 || timeoutMs < 0) {
+            return CommandResult.error("ERR value is not an integer or out of range");
+        }
+
+        ReplicationManager rm = replicationManager;
+        if (rm == null) return CommandResult.integer(0);
+
+        int acked = rm.waitForReplicas((int) numReplicas, timeoutMs);
+        return CommandResult.integer(acked);
+    }
+
+    /**
+     * REPLCONF &lt;arg&gt; [arg ...]
+     *
+     * Used internally during the replication handshake.
+     * On a primary, this command is handled at the server level (TcpServer
+     * inspects the raw line before routing to CommandExecutor). Here we return
+     * OK so that the parser does not reject it as UNKNOWN.
+     */
+    private CommandResult handleReplconf(Command cmd) {
+        return CommandResult.ok();
+    }
+
+    /**
+     * REPLINFO
+     *
+     * Returns a human-readable summary of the replication state:
+     * role, master offset, connected replica count.
+     */
+    private CommandResult handleReplinfo(Command cmd) {
+        ReplicationManager rm = replicationManager;
+        if (rm == null) {
+            return CommandResult.string("role:standalone\r\nmaster_offset:-1\r\nconnected_replicas:0");
+        }
+        String info = "role:primary\r\n" +
+                      "master_offset:" + rm.getMasterOffset() + "\r\n" +
+                      "connected_replicas:" + rm.getReplicaCount();
+        return CommandResult.string(info);
     }
 }

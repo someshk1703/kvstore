@@ -26,6 +26,12 @@ public enum CommandType {
     TTL    (1, 1),  // TTL key  → remaining seconds, -1 = no expiry, -2 = missing
     PERSIST(1, 1),  // PERSIST key → remove TTL
 
+    // Week 4 — Replication
+    WAIT    (2, 2),   // WAIT numreplicas timeout(ms) → integer count
+    REPLCONF(1, -1),  // REPLCONF <arg> [arg ...] — replica handshake
+    PSYNC   (2, 2),   // PSYNC replicationid offset — internal
+    REPLINFO(0, 0),   // REPLINFO → replication status summary
+
     // Sentinel for unknown commands
     UNKNOWN(0, -1);
 

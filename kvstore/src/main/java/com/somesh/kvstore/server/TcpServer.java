@@ -17,6 +17,8 @@ import com.somesh.kvstore.engine.CommandExecutor;
 import com.somesh.kvstore.engine.KVStore;
 import com.somesh.kvstore.protocol.CommandParser;
 import com.somesh.kvstore.protocol.ResponseSerializer;
+import com.somesh.kvstore.replication.ReplicaClient;
+import com.somesh.kvstore.replication.ReplicationManager;
 
 /**
  * TCP server — listens on a port, accepts client connections, delegates each
@@ -54,6 +56,17 @@ public class TcpServer {
     // AtomicBoolean so stop() can signal the accept loop from another thread
     // without synchronization overhead on the hot path.
     private final AtomicBoolean     running = new AtomicBoolean(false);
+
+    // ── Replication state (Week 4) ───────────────────────────────────
+
+    /** Primary-mode: manages the backlog and propagation to replicas. */
+    private ReplicationManager      replicationManager;
+
+    /** Replica-mode: client that connects to the primary and applies its stream. */
+    private ReplicaClient           replicaClient;
+
+    /** Replica listener: listens for replica connections on the replication port. */
+    private Thread                  replicaListenerThread;
 
     // ── Constructor ─────────────────────────────────────────────────
 
@@ -209,7 +222,16 @@ public class TcpServer {
         }
 
         // Week 3: aofWriter.flush(); aofWriter.close();
-        // Week 4: replicationManager.stop();
+        // Week 4: clean up replication resources
+        if (replicationManager != null) {
+            replicationManager.close();
+        }
+        if (replicaClient != null) {
+            replicaClient.close();
+        }
+        if (replicaListenerThread != null) {
+            replicaListenerThread.interrupt();
+        }
 
         log.info("Server stopped cleanly");
     }
@@ -269,9 +291,104 @@ public class TcpServer {
 
     // ── Accessors for testing ────────────────────────────────────────
 
-    public boolean isRunning()  { return running.get(); }
-    public int     getPort()    { return port; }
-    public KVStore getKvStore() { return kvStore; }
+    public boolean isRunning()         { return running.get(); }
+    public int     getPort()           { return port; }
+    public KVStore getKvStore()        { return kvStore; }
+    public CommandExecutor getExecutor() { return executor; }
+
+    // ── Week 4: Replication API ──────────────────────────────────────
+
+    /**
+     * Enable primary-side replication.
+     *
+     * <p>Sets up a {@link ReplicationManager} and starts a listener on
+     * {@link ServerConfig#REPLICATION_PORT} that accepts replica connections.
+     * Call before {@link #start()} so the replication port is open when
+     * the server begins accepting client connections.
+     *
+     * <p>Requires a {@link com.somesh.kvstore.persistence.SnapshotManager}
+     * for the full-resync path; pass {@code null} to skip full-resync support.
+     *
+     * @param snapshotManager snapshot manager for full-resync; may be null
+     */
+    public void enableReplication(com.somesh.kvstore.persistence.SnapshotManager snapshotManager) {
+        this.replicationManager = new ReplicationManager(kvStore, snapshotManager);
+        executor.setReplicationManager(replicationManager);
+        log.info("Replication enabled on port {}", ServerConfig.REPLICATION_PORT);
+
+        // Start a listener thread that accepts replica connections
+        replicaListenerThread = new Thread(() -> acceptReplicaConnections(), "repl-listener");
+        replicaListenerThread.setDaemon(true);
+        replicaListenerThread.start();
+    }
+
+    /**
+     * Configure this server to run as a replica of the given primary.
+     *
+     * <p>Starts a {@link ReplicaClient} that connects to the primary, performs
+     * the handshake, and continuously applies the replication stream.
+     * The local store enters read-only mode: write commands from external clients
+     * are rejected with {@code READONLY}.
+     *
+     * <p>Call before {@link #start()}.
+     *
+     * @param primaryHost primary's hostname or IP
+     * @param primaryPort primary's replication port (usually 6380)
+     */
+    public void startAsReplica(String primaryHost, int primaryPort) {
+        executor.setReplicaMode(true);
+        this.replicaClient = new ReplicaClient(primaryHost, primaryPort, executor);
+        Thread replicaThread = new Thread(replicaClient, "repl-client");
+        replicaThread.setDaemon(true);
+        replicaThread.start();
+        log.info("Started in replica mode — primary={}:{}", primaryHost, primaryPort);
+    }
+
+    /**
+     * Background thread body: listens for replica connections on the replication port.
+     */
+    private void acceptReplicaConnections() {
+        try (ServerSocket replicationServerSocket =
+                new ServerSocket(ServerConfig.REPLICATION_PORT)) {
+            log.info("Replica listener started on port {}", ServerConfig.REPLICATION_PORT);
+            while (!Thread.currentThread().isInterrupted()) {
+                Socket replicaSocket = replicationServerSocket.accept();
+                // Read the REPLCONF <lastOffset> line from the replica
+                try {
+                    java.io.BufferedReader replicaIn = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(
+                            replicaSocket.getInputStream(),
+                            java.nio.charset.StandardCharsets.UTF_8));
+                    java.io.PrintWriter replicaOut = new java.io.PrintWriter(
+                        new java.io.OutputStreamWriter(
+                            replicaSocket.getOutputStream(),
+                            java.nio.charset.StandardCharsets.UTF_8), false);
+
+                    String handshake = replicaIn.readLine();
+                    long fromOffset = -1;
+                    if (handshake != null && handshake.startsWith("REPLCONF ")) {
+                        try {
+                            fromOffset = Long.parseLong(handshake.substring(9).trim());
+                        } catch (NumberFormatException e) {
+                            fromOffset = -1;
+                        }
+                    }
+                    replicaOut.println("+OK");
+                    replicaOut.flush();
+                    // Hand off to ReplicationManager
+                    if (replicationManager != null) {
+                        replicationManager.registerReplica(replicaSocket, fromOffset);
+                    }
+                } catch (IOException e) {
+                    log.warn("Error during replica handshake: {}", e.getMessage());
+                }
+            }
+        } catch (IOException e) {
+            if (!Thread.currentThread().isInterrupted()) {
+                log.error("Replica listener error: {}", e.getMessage());
+            }
+        }
+    }
 
     // ── Entry point ─────────────────────────────────────────────────
 

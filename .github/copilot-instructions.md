@@ -47,7 +47,7 @@ com.somesh.kvstore
 | 1 | Core engine — GET/SET/DEL over TCP | completed |
 | 2 | TTL + LRU eviction | completed |
 | 3 | AOF + Snapshot persistence | completed |
-| 4 | Primary-replica replication | pending |
+| 4 | Primary-replica replication | completed |
 | 5 | HTTP API (Spring Boot) + Docker | pending |
 | 6 | Consistent hashing cluster (bonus) | pending |
 
