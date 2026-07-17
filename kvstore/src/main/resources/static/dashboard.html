@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>kvstore // live</title>
+<style>
+  :root{
+    --bg: #14140f;
+    --panel: #1c1c15;
+    --panel-line: #33321f;
+    --amber: #e8a33d;
+    --amber-dim: #6b5424;
+    --text: #e8e4d8;
+    --text-dim: #8a8776;
+    --green: #7a9b6b;
+    --red: #c1685b;
+    --mono: 'IBM Plex Mono', 'Courier New', monospace;
+    --display: 'Space Grotesk', var(--mono);
+  }
+  *{ box-sizing: border-box; }
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    padding: 32px 24px 64px;
+    min-height: 100vh;
+  }
+  @media (max-width: 640px){ body{ padding: 20px 14px 48px; } }
+
+  .scanline{
+    position: fixed; inset:0; pointer-events:none; z-index: 50;
+    background: repeating-linear-gradient(
+      to bottom, rgba(232,163,61,0.015) 0px, rgba(232,163,61,0.015) 1px,
+      transparent 1px, transparent 3px);
+    mix-blend-mode: overlay;
+  }
+
+  header{
+    max-width: 1000px; margin: 0 auto 28px;
+    display:flex; justify-content: space-between; align-items: flex-end;
+    border-bottom: 1px solid var(--panel-line);
+    padding-bottom: 16px;
+  }
+  h1{
+    font-family: var(--display);
+    font-size: 22px; font-weight: 700; letter-spacing: 0.5px;
+    margin:0; color: var(--amber);
+  }
+  h1 span{ color: var(--text-dim); font-weight: 400; }
+  .status-pill{
+    font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
+    padding: 5px 10px; border-radius: 3px;
+    border: 1px solid var(--panel-line);
+    display:flex; align-items:center; gap:7px;
+  }
+  .dot{ width:7px; height:7px; border-radius:50%; background: var(--text-dim); }
+  .dot.up{ background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot.down{ background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+  main{ max-width: 1000px; margin: 0 auto; display: grid; gap: 20px; }
+
+  .grid-2{ display:grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 720px){ .grid-2{ grid-template-columns: 1fr; } }
+
+  .panel{
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: 4px;
+    padding: 18px 20px;
+  }
+  .panel-label{
+    font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--text-dim); margin-bottom: 14px;
+  }
+
+  .stat-row{ display:flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px dashed var(--panel-line); font-size: 13px; }
+  .stat-row:last-child{ border-bottom: none; }
+  .stat-row .k{ color: var(--text-dim); }
+  .stat-row .v{ color: var(--text); font-weight: 600; }
+  .stat-row .v.amber{ color: var(--amber); }
+
+  /* memory cell grid */
+  #cellGrid{
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(30px, 1fr));
+    gap: 5px;
+  }
+  .cell{
+    aspect-ratio: 1; border-radius: 2px;
+    background: #24231a;
+    border: 1px solid var(--panel-line);
+    transition: background 0.15s, box-shadow 0.15s;
+  }
+  .cell.hot{ background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+  .cell.warm{ background: var(--amber-dim); }
+  .cell.evicted{
+    background: transparent;
+    border: 1px solid var(--red);
+  }
+  .legend{ display:flex; gap: 16px; margin-top: 12px; font-size: 11px; color: var(--text-dim); }
+  .legend-item{ display:flex; align-items:center; gap:6px; }
+  .legend-swatch{ width:10px; height:10px; border-radius:2px; }
+
+  /* console */
+  #console{
+    background: #0f0f0b; border: 1px solid var(--panel-line); border-radius: 4px;
+    padding: 14px 16px; font-size: 13px; height: 200px; overflow-y: auto;
+  }
+  #console .line{ margin-bottom: 4px; white-space: pre-wrap; word-break: break-all; }
+  #console .cmd{ color: var(--amber); }
+  #console .resp{ color: var(--text-dim); }
+  #console .ok{ color: var(--green); }
+  #console .err{ color: var(--red); }
+  .console-input-row{ display:flex; gap: 8px; margin-top: 10px; align-items: center; }
+  .console-input-row span{ color: var(--amber); }
+  #cmdInput{
+    flex:1; background: #0f0f0b; border: 1px solid var(--panel-line);
+    color: var(--text); font-family: var(--mono); font-size: 13px;
+    padding: 8px 10px; border-radius: 3px; outline: none;
+  }
+  #cmdInput:focus{ border-color: var(--amber); }
+
+  .cmd-help{
+    margin-top: 8px; font-size: 11px; color: var(--text-dim);
+    display: flex; gap: 16px; flex-wrap: wrap;
+  }
+  .cmd-help code{ color: var(--amber); font-size: 11px; }
+
+  footer{
+    max-width: 1000px; margin: 28px auto 0; font-size: 11px; color: var(--text-dim);
+    display:flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  }
+  a{ color: var(--amber); text-decoration: none; }
+  a:hover{ text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="scanline"></div>
+
+<header>
+  <h1>kvstore <span>// live instance</span></h1>
+  <div class="status-pill"><span class="dot" id="statusDot"></span><span id="statusText">connecting</span></div>
+</header>
+
+<main>
+  <div class="grid-2">
+    <!-- Store stats — wired to real /api/info fields -->
+    <div class="panel">
+      <div class="panel-label">store stats</div>
+      <div class="stat-row"><span class="k">total keys</span><span class="v amber" id="statKeys">—</span></div>
+      <div class="stat-row"><span class="k">memory used</span><span class="v" id="statMem">—</span></div>
+      <div class="stat-row"><span class="k">memory capacity</span><span class="v" id="statMemPct">—</span></div>
+      <div class="stat-row"><span class="k">uptime</span><span class="v" id="statUptime">—</span></div>
+      <div class="stat-row"><span class="k">version</span><span class="v" id="statVersion">—</span></div>
+    </div>
+
+    <!-- Fields not yet exposed by /api/info — honest labels -->
+    <div class="panel">
+      <div class="panel-label">persistence &amp; replication <span style="color:var(--text-dim); text-transform:none; letter-spacing:0;">(not yet in /api/info)</span></div>
+      <div class="stat-row"><span class="k">AOF status</span><span class="v" style="color:var(--text-dim)">not exposed yet</span></div>
+      <div class="stat-row"><span class="k">hit / miss ratio</span><span class="v" style="color:var(--text-dim)">not exposed yet</span></div>
+      <div class="stat-row"><span class="k">evictions (session)</span><span class="v" style="color:var(--text-dim)">not exposed yet</span></div>
+      <div class="stat-row"><span class="k">replica sync</span><span class="v" style="color:var(--text-dim)">not exposed yet</span></div>
+    </div>
+  </div>
+
+  <!-- Key cache map — visual grid driven by totalKeys from /api/info -->
+  <div class="panel">
+    <div class="panel-label">key cache map — amber = active slot, dim = idle, outlined = evicted (inferred from key-count drop)</div>
+    <div id="cellGrid"></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-swatch" style="background:var(--amber)"></div> hot</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:var(--amber-dim)"></div> warm</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#24231a;border:1px solid var(--panel-line)"></div> empty slot</div>
+      <div class="legend-item"><div class="legend-swatch" style="border:1px solid var(--red)"></div> evicted</div>
+    </div>
+  </div>
+
+  <!-- Command console — routes to real REST endpoints -->
+  <div class="panel">
+    <div class="panel-label">command console</div>
+    <div id="console">
+      <div class="line resp">// commands are routed to your REST API</div>
+      <div class="line resp">// SET foo bar [EX 60]  ·  GET foo  ·  DEL foo  ·  KEYS user:*  ·  PING</div>
+    </div>
+    <div class="console-input-row">
+      <span>&gt;</span>
+      <input id="cmdInput" type="text" placeholder="SET foo bar" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="cmd-help">
+      <span><code>SET</code> key value [EX sec]</span>
+      <span><code>GET</code> key</span>
+      <span><code>DEL</code> key</span>
+      <span><code>KEYS</code> pattern</span>
+      <span><code>PING</code></span>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <span>polling <code>/api/info</code> every 3s · <code>/api/health</code> status</span>
+  <span>somesh kannan — <a href="https://github.com/someshk1703" target="_blank">github</a></span>
+</footer>
+
+<script>
+// ── Cell grid ────────────────────────────────────────────────────────────────
+const CELL_COUNT = 96;
+const grid = document.getElementById('cellGrid');
+const cells = [];
+for (let i = 0; i < CELL_COUNT; i++) {
+  const c = document.createElement('div');
+  c.className = 'cell';
+  grid.appendChild(c);
+  cells.push(c);
+}
+
+let lastKeyCount = 0;
+
+function pulseGrid(activeCount) {
+  const cap = Math.min(activeCount, CELL_COUNT);
+  cells.forEach((c, i) => {
+    if (i < cap) {
+      if (!c.classList.contains('hot')) {
+        c.classList.remove('warm', 'evicted');
+        c.classList.add('hot');
+        setTimeout(() => { c.classList.remove('hot'); c.classList.add('warm'); }, 900);
+      }
+    } else {
+      c.classList.remove('hot', 'warm');
+    }
+  });
+}
+
+function markEviction(index) {
+  const c = cells[index % CELL_COUNT];
+  c.classList.remove('hot', 'warm');
+  c.classList.add('evicted');
+  setTimeout(() => c.classList.remove('evicted'), 2500);
+}
+
+// ── Status dot ───────────────────────────────────────────────────────────────
+const statusDot  = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+
+async function pollHealth() {
+  try {
+    const res = await fetch('/api/health');
+    if (res.ok) {
+      statusDot.className = 'dot up';
+      statusText.textContent = 'online';
+    } else { throw new Error(); }
+  } catch {
+    statusDot.className = 'dot down';
+    statusText.textContent = 'unreachable';
+  }
+}
+
+// ── Formatters ───────────────────────────────────────────────────────────────
+function formatUptime(s) {
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+function fmtBytes(n) {
+  if (n == null) return '—';
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(2) + ' MB';
+}
+
+// ── Stats poll — fields match real /api/info response exactly ────────────────
+// { version, totalKeys, uptimeSeconds, usedMemoryBytes, maxMemoryBytes }
+async function pollInfo() {
+  try {
+    const res = await fetch('/api/info');
+    if (!res.ok) throw new Error();
+    const d = await res.json();
+
+    document.getElementById('statKeys').textContent    = d.totalKeys ?? '—';
+    document.getElementById('statMem').textContent     = fmtBytes(d.usedMemoryBytes);
+    document.getElementById('statMemPct').textContent  =
+      (d.usedMemoryBytes != null && d.maxMemoryBytes)
+        ? `${fmtBytes(d.usedMemoryBytes)} / ${fmtBytes(d.maxMemoryBytes)} (${((d.usedMemoryBytes / d.maxMemoryBytes) * 100).toFixed(1)}%)`
+        : '—';
+    document.getElementById('statUptime').textContent  = d.uptimeSeconds != null ? formatUptime(d.uptimeSeconds) : '—';
+    document.getElementById('statVersion').textContent = d.version ?? '—';
+
+    if (d.totalKeys != null) {
+      pulseGrid(d.totalKeys);
+      // Infer eviction from key-count drop (no eviction counter in /api/info yet)
+      if (lastKeyCount > 0 && d.totalKeys < lastKeyCount) {
+        markEviction(Math.floor(Math.random() * CELL_COUNT));
+      }
+      lastKeyCount = d.totalKeys;
+    }
+  } catch { /* keep last-known values; status pill already reflects state */ }
+}
+
+pollHealth();
+pollInfo();
+setInterval(pollHealth, 3000);
+setInterval(pollInfo, 3000);
+
+// ── Command console — routes to real REST endpoints ───────────────────────────
+//
+//   SET key value [EX n]  →  POST /api/keys/{key}  body: {value, ttlSeconds?}
+//   GET key               →  GET  /api/keys/{key}  response: {key, value}
+//   DEL key               →  DELETE /api/keys/{key}  204 (deleted) | 404 (missing)
+//   KEYS pattern          →  GET  /api/keys?pattern=xxx  response: [key, ...]
+//   PING                  →  GET  /api/health  response: {status: "UP"}
+//
+const consoleEl = document.getElementById('console');
+const cmdInput  = document.getElementById('cmdInput');
+
+function logLine(text, cls) {
+  const div = document.createElement('div');
+  div.className = 'line ' + (cls || '');
+  div.textContent = text;
+  consoleEl.appendChild(div);
+  consoleEl.scrollTop = consoleEl.scrollHeight;
+}
+
+async function dispatch(raw) {
+  const parts = raw.trim().split(/\s+/);
+  const verb  = parts[0].toUpperCase();
+
+  if (verb === 'PING') {
+    const res = await fetch('/api/health');
+    const d   = await res.json();
+    logLine('+' + (d.status ?? 'PONG'), 'ok');
+    return;
+  }
+
+  if (verb === 'GET') {
+    if (parts.length < 2) { logLine('-ERR wrong number of arguments for GET', 'err'); return; }
+    const key = parts[1];
+    const res = await fetch(`/api/keys/${encodeURIComponent(key)}`);
+    if (res.status === 404) { logLine('$-1 (nil)', 'resp'); return; }
+    if (!res.ok)            { logLine(`-ERR server returned ${res.status}`, 'err'); return; }
+    const d = await res.json();
+    logLine(`"${d.value}"`, 'ok');
+    return;
+  }
+
+  if (verb === 'SET') {
+    // SET key value [EX seconds]
+    if (parts.length < 3) { logLine('-ERR wrong number of arguments for SET', 'err'); return; }
+    const key   = parts[1];
+    const value = parts[2];
+    const body  = { value };
+    const exIdx = parts.findIndex(p => p.toUpperCase() === 'EX');
+    if (exIdx !== -1 && parts[exIdx + 1]) {
+      body.ttlSeconds = parseInt(parts[exIdx + 1], 10);
+    }
+    const res = await fetch(`/api/keys/${encodeURIComponent(key)}`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body)
+    });
+    if (!res.ok) { logLine(`-ERR server returned ${res.status}`, 'err'); return; }
+    logLine('+OK', 'ok');
+    pollInfo(); // refresh stats immediately after a write
+    return;
+  }
+
+  if (verb === 'DEL') {
+    if (parts.length < 2) { logLine('-ERR wrong number of arguments for DEL', 'err'); return; }
+    const key = parts[1];
+    const res = await fetch(`/api/keys/${encodeURIComponent(key)}`, { method: 'DELETE' });
+    if (res.status === 404) { logLine(':0 (key not found)', 'resp'); return; }
+    if (!res.ok)            { logLine(`-ERR server returned ${res.status}`, 'err'); return; }
+    logLine(':1', 'ok');
+    pollInfo();
+    return;
+  }
+
+  if (verb === 'KEYS') {
+    const pattern = parts[1] ?? '*';
+    const res = await fetch(`/api/keys?pattern=${encodeURIComponent(pattern)}`);
+    if (!res.ok) { logLine(`-ERR server returned ${res.status}`, 'err'); return; }
+    const keys = await res.json();
+    if (keys.length === 0) { logLine('(empty list)', 'resp'); return; }
+    keys.forEach((k, i) => logLine(`${i + 1}) "${k}"`, 'resp'));
+    return;
+  }
+
+  logLine(`-ERR unknown command '${parts[0]}' — try SET / GET / DEL / KEYS / PING`, 'err');
+}
+
+cmdInput.addEventListener('keydown', async (e) => {
+  if (e.key !== 'Enter' || !cmdInput.value.trim()) return;
+  const raw = cmdInput.value.trim();
+  logLine('> ' + raw, 'cmd');
+  cmdInput.value = '';
+  try {
+    await dispatch(raw);
+  } catch (err) {
+    logLine('-ERR ' + (err.message || 'network error'), 'err');
+  }
+});
+</script>
+</body>
+</html>
