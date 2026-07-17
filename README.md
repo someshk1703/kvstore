@@ -105,6 +105,7 @@ POST   /api/keys/{key}           body: {"value":"y","ttlSeconds":30}
 DELETE /api/keys/{key}           → {"deleted":true}
 GET    /api/keys?pattern=user:*  → {"keys":["user:1","user:2"]}
 GET    /api/info                 → {"ops_per_sec":12043,"mem_mb":84,...}
+GET    /api/health               → {"status":"UP"}
 POST   /api/admin/flush          → {"flushed":true}
 ```
 
@@ -170,6 +171,39 @@ docker-compose down        # tear down
 ```bash
 cd kvstore && mvn test
 ```
+
+---
+
+## Deploy (Railway)
+
+The repo includes a `railway.toml` at the root that configures Railway to use the multi-stage Dockerfile automatically — no manual dashboard settings needed.
+
+```toml
+# railway.toml (already committed)
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "kvstore/Dockerfile"
+
+[deploy]
+healthcheckPath = "/api/health"
+healthcheckTimeout = 30
+```
+
+**Steps:**
+1. Push the repo to GitHub.
+2. In Railway → **New Project → Deploy from GitHub repo** → select this repo.
+3. Under **Settings → Networking** → **Generate Domain** to get a public HTTPS URL.
+4. Add any env vars under **Variables** (e.g. `AOF_ENABLED=true`).
+5. Railway injects a `PORT` env var — the HTTP layer reads it automatically (falls back to `8080` locally).
+
+**Two-service setup (primary + replica):**  
+Create two Railway services pointing at the same repo. Set the replica service's start command to:
+```
+--http --replicaof <primary-private-host> 6380
+```
+Keep replication traffic on Railway's private network — do **not** expose port 6380 publicly.
+
+**Note:** The TCP protocol port (6379) requires Railway's TCP proxy feature (paid tier). The HTTP API works on the free tier via the generated public domain.
 
 ---
 
