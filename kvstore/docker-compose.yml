@@ -1,0 +1,68 @@
+# KVStore — Docker Compose stack
+#
+# Services:
+#   primary  — Primary node. TCP :6379, Replication :6380, HTTP :8080
+#   replica  — Replica node. TCP :6381 (no HTTP to keep the demo clean)
+#
+# Usage:
+#   docker-compose up           # start both nodes
+#   docker-compose up primary   # primary only
+#   docker-compose down         # stop and remove containers
+#
+# Demo workflow:
+#   1. docker-compose up -d
+#   2. java -jar kvstore.jar --cli SET demo hello   (targets localhost:6379)
+#   3. java -jar kvstore.jar --cli -p 6381 GET demo  (targets replica)
+#   4. curl http://localhost:8080/api/keys/demo
+
+version: "3.9"
+
+services:
+
+  # ── Primary ───────────────────────────────────────────────────────────────
+  primary:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kvstore:latest
+    container_name: kvstore-primary
+    # Start in primary mode with replication listener and HTTP API
+    command: ["--with-replication", "--http"]
+    ports:
+      - "6379:6379"    # TCP client port
+      - "6380:6380"    # Replication port (replicas connect here)
+      - "8080:8080"    # HTTP API
+    volumes:
+      # Persist AOF and snapshot files between restarts
+      - kvstore-primary-data:/app/data
+    environment:
+      - JAVA_OPTS=-Xmx256m
+    healthcheck:
+      test: ["CMD-SHELL", "printf 'PING\\r\\n' | nc -w 1 localhost 6379 | grep -q '+PONG'"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    restart: on-failure
+
+  # ── Replica ───────────────────────────────────────────────────────────────
+  replica:
+    image: kvstore:latest
+    container_name: kvstore-replica
+    # Connect to primary via Docker network name
+    command: ["6381", "--replicaof", "primary", "6380"]
+    ports:
+      - "6381:6381"    # TCP client port (read-only)
+    volumes:
+      - kvstore-replica-data:/app/data
+    environment:
+      - JAVA_OPTS=-Xmx128m
+    depends_on:
+      primary:
+        condition: service_healthy
+    restart: on-failure
+
+# ── Volumes ────────────────────────────────────────────────────────────────
+volumes:
+  kvstore-primary-data:
+  kvstore-replica-data:

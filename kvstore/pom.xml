@@ -28,28 +28,40 @@
 
         <!-- dependency versions — pin everything explicitly -->
         <junit.version>5.10.2</junit.version>
-        <slf4j.version>2.0.12</slf4j.version>
-        <logback.version>1.5.3</logback.version>
+        <!-- slf4j and logback versions are managed by the Spring Boot BOM below.
+             Removing overrides here prevents the "NoSuchMethodError: OptionHelper"
+             clash that arises when Spring Boot's transitive logback differs from
+             our explicit pin. Spring Boot 3.2.5 ships a consistent, tested set. -->
         <mockito.version>5.11.0</mockito.version>
         <assertj.version>3.25.3</assertj.version>
+        <spring-boot.version>3.2.5</spring-boot.version>
     </properties>
+
+    <!-- Spring Boot BOM — pins all spring-* and third-party versions consistently -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
 
         <!-- ── Logging ──────────────────────────────
-             SLF4J is the facade (what your code calls).
-             Logback is the implementation (what runs).
-             Never log with System.out in production code.
+             Versions managed by the Spring Boot BOM.
              ────────────────────────────────────────── -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-            <version>${slf4j.version}</version>
         </dependency>
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
-            <version>${logback.version}</version>
         </dependency>
 
         <!-- ── Testing ──────────────────────────────
@@ -84,6 +96,33 @@
             <groupId>org.mockito</groupId>
             <artifactId>mockito-junit-jupiter</artifactId>
             <version>${mockito.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- ── Week 5: HTTP API ──────────────────────
+             Spring Boot web starter — brings in embedded
+             Tomcat and Spring MVC. The HTTP layer wraps
+             the existing KVStore without adding logic.
+             ────────────────────────────────────────── -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <!-- version managed by spring-boot-dependencies BOM -->
+            <exclusions>
+                <!-- We already have logback via our own dep;
+                     exclude spring-boot's default logging starter
+                     to prevent duplicate binding warnings. -->
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-logging</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <!-- Spring Boot Test — only needed if you write HTTP integration tests -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
 
@@ -131,34 +170,24 @@
                 </configuration>
             </plugin>
 
-            <!-- ── Shade plugin ─────────────────────
-                 Packages your app + all dependencies
-                 into a single fat JAR. Run it with:
-                   java -jar target/kvstore-0.1.0-SNAPSHOT.jar
-                 Week 1 you won't need this. Uncomment
-                 when you want to deploy or demo.
+            <!-- ── Spring Boot Maven plugin ──────────
+                 Creates an executable fat JAR that
+                 includes embedded Tomcat and all deps.
+                 Run: java -jar target/kvstore-0.1.0-SNAPSHOT.jar
                  ─────────────────────────────────────── -->
-            <!--
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>3.5.2</version>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring-boot.version}</version>
+                <configuration>
+                    <mainClass>com.somesh.kvstore.Main</mainClass>
+                </configuration>
                 <executions>
                     <execution>
-                        <phase>package</phase>
-                        <goals><goal>shade</goal></goals>
-                        <configuration>
-                            <transformers>
-                                <transformer implementation=
-                                  "org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.somesh.kvstore.server.TcpServer</mainClass>
-                                </transformer>
-                            </transformers>
-                        </configuration>
+                        <goals><goal>repackage</goal></goals>
                     </execution>
                 </executions>
             </plugin>
-            -->
 
         </plugins>
     </build>

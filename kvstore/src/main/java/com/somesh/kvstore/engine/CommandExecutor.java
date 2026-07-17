@@ -9,6 +9,7 @@ import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.somesh.kvstore.config.ServerConfig;
 import com.somesh.kvstore.persistence.AOFWriter;
 import com.somesh.kvstore.persistence.SnapshotManager;
 import com.somesh.kvstore.protocol.Command;
@@ -168,6 +169,9 @@ public class CommandExecutor {
         map.put(CommandType.WAIT,     this::handleWait);
         map.put(CommandType.REPLCONF, this::handleReplconf);
         map.put(CommandType.REPLINFO, this::handleReplinfo);
+        // Week 5 — KEYS + INFO
+        map.put(CommandType.KEYS, this::handleKeys);
+        map.put(CommandType.INFO, this::handleInfo);
         return Map.copyOf(map);   // immutable after construction
     }
 
@@ -444,6 +448,53 @@ public class CommandExecutor {
         String info = "role:primary\r\n" +
                       "master_offset:" + rm.getMasterOffset() + "\r\n" +
                       "connected_replicas:" + rm.getReplicaCount();
+        return CommandResult.string(info);
+    }
+
+    // ── Week 5 handlers — KEYS / INFO ───────────────────────────────
+
+    /**
+     * KEYS pattern
+     *
+     * Returns all keys matching the glob pattern. Not recommended in production
+     * (full scan), but useful for debugging and the HTTP API.
+     *
+     * Example: KEYS user:* → *2\r\n$6\r\nuser:1\r\n$6\r\nuser:2\r\n
+     */
+    private CommandResult handleKeys(Command cmd) {
+        if (cmd.argCount() != 1) {
+            return CommandResult.error("ERR wrong number of arguments for 'keys' command");
+        }
+        java.util.List<String> keys = new java.util.ArrayList<>(kvStore.keys(cmd.arg(0)));
+        java.util.Collections.sort(keys);   // deterministic order for tests
+        return CommandResult.array(keys);
+    }
+
+    /**
+     * INFO
+     *
+     * Returns a human-readable summary of server metadata.
+     * Mirrors Redis INFO's format — newline-separated key:value pairs.
+     */
+    private CommandResult handleInfo(Command cmd) {
+        Runtime rt = Runtime.getRuntime();
+        long usedBytes  = rt.totalMemory() - rt.freeMemory();
+        int  totalKeys  = kvStore.size();
+        ReplicationManager rm = replicationManager;
+        String role = rm != null ? "primary" : (replicaMode ? "replica" : "standalone");
+
+        String info = "# Server\r\n" +
+                      "version:0.1.0\r\n" +
+                      "mode:" + role + "\r\n" +
+                      "tcp_port:" + ServerConfig.SERVER_PORT + "\r\n" +
+                      "http_port:8080\r\n" +
+                      "\r\n" +
+                      "# Keyspace\r\n" +
+                      "total_keys:" + totalKeys + "\r\n" +
+                      "\r\n" +
+                      "# Memory\r\n" +
+                      "used_memory_bytes:" + usedBytes + "\r\n" +
+                      "max_memory_bytes:" + ServerConfig.MAX_MEMORY_BYTES;
         return CommandResult.string(info);
     }
 }

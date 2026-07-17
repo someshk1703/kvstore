@@ -179,6 +179,51 @@ public class KVStore {
     }
 
     /**
+     * Returns all keys matching a Redis-style glob pattern.
+     *
+     * <p>Supported wildcards:
+     * <ul>
+     *   <li>{@code *} — matches zero or more characters</li>
+     *   <li>{@code ?} — matches exactly one character</li>
+     * </ul>
+     *
+     * <p>Expired keys are skipped (lazy expiry on scan).
+     *
+     * @param pattern glob pattern; {@code "*"} returns all live keys
+     * @return a snapshot set of matching keys (never null)
+     */
+    public java.util.Set<String> keys(String pattern) {
+        String regex = globToRegex(pattern);
+        java.util.regex.Pattern compiled = java.util.regex.Pattern.compile(regex);
+        java.util.Set<String> result = new java.util.HashSet<>();
+        for (java.util.Map.Entry<String, ValueEntry> entry : store.entrySet()) {
+            ValueEntry v = entry.getValue();
+            if (v.isExpired()) continue;
+            if (compiled.matcher(entry.getKey()).matches()) {
+                result.add(entry.getKey());
+            }
+        }
+        return result;
+    }
+
+    /** Converts a Redis glob pattern to a Java regex. */
+    private static String globToRegex(String glob) {
+        StringBuilder sb = new StringBuilder("^");
+        for (int i = 0; i < glob.length(); i++) {
+            char c = glob.charAt(i);
+            switch (c) {
+                case '*' -> sb.append(".*");
+                case '?' -> sb.append('.');
+                case '.', '(', ')', '[', ']', '{', '}', '^', '$', '+', '|', '\\' ->
+                    sb.append('\\').append(c);
+                default  -> sb.append(c);
+            }
+        }
+        sb.append('$');
+        return sb.toString();
+    }
+
+    /**
      * Called by {@link com.somesh.kvstore.memory.ExpiryManager} when the sweep
      * evicts a key — removes it from the LRU tracking structure so memory
      * accounting stays consistent.

@@ -35,6 +35,12 @@ public class ResponseSerializer {
             case STRING  -> bulk(result.stringValue);
             case INTEGER -> integer(result.intValue);
             case ERROR   -> error(result.errorMessage);
+            case ARRAY   -> {
+                String[] elements = result.arrayValue.stream()
+                    .map(this::bulk)
+                    .toArray(String[]::new);
+                yield array(elements);
+            }
         };
     }
 

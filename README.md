@@ -114,49 +114,57 @@ POST   /api/admin/flush          → {"flushed":true}
 - Maven 3.9+
 - Docker + docker-compose (for cluster mode)
 
-### Single node
+### Single node (TCP only)
 
 ```bash
-JAVA_HOME=/opt/homebrew/Cellar/openjdk@21/21.0.11/libexec/openjdk.jdk/Contents/Home \
-  mvn clean package -q
+cd kvstore && mvn clean package -q
 java -jar target/kvstore-0.1.0-SNAPSHOT.jar
 ```
 
-> **Tip:** add `export JAVA_HOME=<path-above>` to your shell profile so Maven always picks up JDK 21.
+### Single node with HTTP API (TCP + HTTP)
+
+```bash
+java -jar target/kvstore-0.1.0-SNAPSHOT.jar --http
+# TCP  → localhost:6379
+# HTTP → localhost:8080
+```
+
+### CLI client
+
+```bash
+# Single-shot
+java -jar target/kvstore-0.1.0-SNAPSHOT.jar --cli SET foo bar
+java -jar target/kvstore-0.1.0-SNAPSHOT.jar --cli GET foo
+java -jar target/kvstore-0.1.0-SNAPSHOT.jar --cli KEYS 'user:*'
+
+# Interactive REPL
+java -jar target/kvstore-0.1.0-SNAPSHOT.jar --cli
+kvstore> SET session:1 alice EX 60
++OK
+kvstore> GET session:1
+"alice"
+kvstore> quit
+```
+
+### Benchmark
+
+```bash
+# Server must be running first
+java -jar target/kvstore-0.1.0-SNAPSHOT.jar --benchmark
+```
 
 ### Primary + replica (docker-compose)
 
 ```bash
-docker-compose up
-# Primary on :6379 / HTTP :8080
-# Replica  on :6380
-```
-
-```yaml
-# docker-compose.yml
-services:
-  kv-primary:
-    build: kvstore/
-    ports: ["6379:6379", "8080:8080"]
-    environment:
-      ROLE: primary
-      MAX_MEMORY_MB: 256
-
-  kv-replica:
-    build: kvstore/
-    ports: ["6380:6379"]
-    environment:
-      ROLE: replica
-      PRIMARY_HOST: kv-primary
-      PRIMARY_PORT: 6379
-    depends_on: [kv-primary]
+cd kvstore
+docker-compose up          # start primary (:6379 / :8080) + replica (:6381)
+docker-compose down        # tear down
 ```
 
 ### Tests
 
 ```bash
-JAVA_HOME=/opt/homebrew/Cellar/openjdk@21/21.0.11/libexec/openjdk.jdk/Contents/Home \
-  mvn test
+cd kvstore && mvn test
 ```
 
 ---
@@ -166,11 +174,11 @@ JAVA_HOME=/opt/homebrew/Cellar/openjdk@21/21.0.11/libexec/openjdk.jdk/Contents/H
 | Week | Module | Goal | Status |
 |---|---|---|---|
 | 1 | Core engine | `GET` / `SET` / `DEL` in memory over TCP | ✅ Complete |
-| 2 | TTL + LRU eviction | Keys expire; LRU eviction when over memory limit | pending |
-| 3 | Persistence | AOF + snapshot; crash-safe restart | pending |
-| 4 | Replication | Primary-replica sync with partial resync + `WAIT` | pending |
-| 5 | HTTP API + CLI | Spring Boot wrapper, Docker image, docker-compose | pending |
-| 6 | Cluster (bonus) | Consistent hashing, virtual nodes, automatic failover | pending |
+| 2 | TTL + LRU eviction | Keys expire; LRU eviction when over memory limit | ✅ Complete |
+| 3 | Persistence | AOF + snapshot; crash-safe restart | ✅ Complete |
+| 4 | Replication | Primary-replica sync with partial resync + `WAIT` | ✅ Complete |
+| 5 | HTTP API + CLI | Spring Boot wrapper, CLI, benchmark, Docker | ✅ Complete |
+| 6 | Cluster (bonus) | Consistent hashing, virtual nodes, automatic failover | ⏳ Pending |
 
 ### Week 1 — What was built
 
@@ -234,8 +242,15 @@ JAVA_HOME=/opt/homebrew/Cellar/openjdk@21/21.0.11/libexec/openjdk.jdk/Contents/H
   - `TcpServer` — `ServerSocket` + cached thread pool
   - `ClientHandler` — per-client read/parse/execute/write loop
   - `Main` — wires store + server, binds port 6379
-- [ ] Week 2 — LRU + TTL (`EXPIRE`, `TTL`, `PERSIST`, `INCR`, `ExpiryManager`, `LRUCache`)
-- [ ] Week 3 — AOF + Snapshot persistence
-- [ ] Week 4 — Primary-replica replication
-- [ ] Week 5 — HTTP API + Docker
+- [x] Week 2 — TTL + LRU eviction (`EXPIRE`, `TTL`, `PERSIST`, `ExpiryManager`, `LRUCache`)
+- [x] Week 3 — AOF + Snapshot persistence (`AOFWriter`, `SnapshotManager`, `CrashRecovery`)
+- [x] Week 4 — Primary-replica replication (`ReplicationManager`, `ReplicaClient`, `RingBuffer`, `WAIT`)
+- [x] Week 5 — HTTP API + CLI + Benchmarks + Docker
+  - `HttpApiApplication` — Spring Boot 3.2 REST layer on port 8080
+  - `KeyValueController` — GET/POST/DELETE/KEYS/INFO endpoints
+  - `KvCli` — interactive REPL + single-shot TCP client
+  - `BenchmarkRunner` — ConcurrentHashMap vs synchronized HashMap comparison
+  - `Dockerfile` — multi-stage build (Maven build + JRE runtime)
+  - `docker-compose.yml` — primary (TCP+HTTP) + replica
+  - `KVStore#keys(pattern)` — glob pattern matching for KEYS command
 - [ ] Week 6 — Consistent hashing cluster (bonus)

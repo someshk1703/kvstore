@@ -32,6 +32,10 @@ public enum CommandType {
     PSYNC   (2, 2),   // PSYNC replicationid offset — internal
     REPLINFO(0, 0),   // REPLINFO → replication status summary
 
+    // Week 5 — HTTP + CLI
+    KEYS    (1, 1),   // KEYS pattern → array of matching keys
+    INFO    (0, 0),   // INFO → server metadata string
+
     // Sentinel for unknown commands
     UNKNOWN(0, -1);
 
