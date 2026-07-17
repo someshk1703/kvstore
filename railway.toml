@@ -1,0 +1,8 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "kvstore/Dockerfile"
+buildContext = "kvstore"
+
+[deploy]
+healthcheckPath = "/api/health"
+healthcheckTimeout = 30
