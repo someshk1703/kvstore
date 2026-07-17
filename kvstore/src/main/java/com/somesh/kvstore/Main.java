@@ -76,7 +76,11 @@ public class Main {
         int    replicaOfPort    = -1;
         boolean withReplication = false;
         boolean withHttp        = false;
-        int    httpPort         = 8080;
+        // Railway (and similar platforms) inject PORT for the public-facing HTTP
+        // service. Fall back to 8080 for local dev.
+        int    httpPort         = System.getenv("PORT") != null
+                                    ? Integer.parseInt(System.getenv("PORT"))
+                                    : 8080;
 
         // Parse arguments
         for (int i = 0; i < args.length; i++) {

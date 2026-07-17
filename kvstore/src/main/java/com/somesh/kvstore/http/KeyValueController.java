@@ -96,6 +96,13 @@ public class KeyValueController {
         return ResponseEntity.ok(sorted);
     }
 
+    // ── GET /api/health ──────────────────────────────────────────────────────
+
+    @GetMapping("/health")
+    public ResponseEntity<Map<String, String>> health() {
+        return ResponseEntity.ok(Map.of("status", "UP"));
+    }
+
     // ── GET /api/info ────────────────────────────────────────────────────────
 
     @GetMapping("/info")
