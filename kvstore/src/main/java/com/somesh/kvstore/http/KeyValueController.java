@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.RestController;
 import com.somesh.kvstore.engine.KVStore;
 import com.somesh.kvstore.persistence.AOFWriter;
 import com.somesh.kvstore.replication.ReplicationManager;
-
 /**
  * REST API for the KVStore.
  *
@@ -42,14 +41,9 @@ import com.somesh.kvstore.replication.ReplicationManager;
 public class KeyValueController {
 
     private final KVStore kvStore;
-    private final AOFWriter aofWriter;
-    private final ReplicationManager replicationManager;
 
-    public KeyValueController(KVStore kvStore, AOFWriter aofWriter,
-                              ReplicationManager replicationManager) {
+    public KeyValueController(KVStore kvStore) {
         this.kvStore = kvStore;
-        this.aofWriter = aofWriter;
-        this.replicationManager = replicationManager;
     }
 
     // ── GET /api/keys/{key} ──────────────────────────────────────────────────
@@ -137,20 +131,22 @@ public class KeyValueController {
         body.put("hitRatio",         hitRatio);
         // Evictions
         body.put("evictions",        kvStore.getEvictionCount());
-        // AOF persistence
-        if (aofWriter != null) {
+        // AOF persistence — read from static holder (may be null if AOF disabled)
+        AOFWriter aof = HttpApiApplication.getSharedAofWriter();
+        if (aof != null) {
             body.put("aofEnabled",       true);
-            body.put("aofFsyncMode",     aofWriter.getFsyncMode().name());
-            body.put("aofCommandCount",  aofWriter.getCommandCount());
-            body.put("aofPath",          aofWriter.getAofPath());
+            body.put("aofFsyncMode",     aof.getFsyncMode().name());
+            body.put("aofCommandCount",  aof.getCommandCount());
+            body.put("aofPath",          aof.getAofPath());
         } else {
             body.put("aofEnabled", false);
         }
-        // Replication
-        if (replicationManager != null) {
-            body.put("replicaCount",       replicationManager.getReplicaCount());
-            body.put("syncedReplicaCount", replicationManager.getSyncedReplicaCount());
-            body.put("masterOffset",       replicationManager.getMasterOffset());
+        // Replication — read from static holder (may be null in standalone mode)
+        ReplicationManager repl = HttpApiApplication.getSharedReplicationManager();
+        if (repl != null) {
+            body.put("replicaCount",       repl.getReplicaCount());
+            body.put("syncedReplicaCount", repl.getSyncedReplicaCount());
+            body.put("masterOffset",       repl.getMasterOffset());
         } else {
             body.put("replicaCount", 0);
         }

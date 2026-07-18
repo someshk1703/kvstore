@@ -91,14 +91,17 @@ public class HttpApiApplication {
         return sharedStore;
     }
 
-    @Bean
-    public AOFWriter aofWriter() {
-        return sharedAofWriter;   // may be null — controller must null-check
+    // ── Static accessors for optional subsystems ─────────────────────────────
+    // Not exposed as Spring @Bean because they may be null (AOF disabled, standalone
+    // mode) and Spring does not allow injecting null beans via constructor injection.
+    // The controller reads them via these static getters instead.
+
+    public static AOFWriter getSharedAofWriter() {
+        return sharedAofWriter;
     }
 
-    @Bean
-    public ReplicationManager replicationManager() {
-        return sharedReplicationManager;   // may be null — controller must null-check
+    public static ReplicationManager getSharedReplicationManager() {
+        return sharedReplicationManager;
     }
 
     /** Called from Main after replication is enabled to expose the manager via /api/info. */

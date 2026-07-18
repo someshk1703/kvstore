@@ -21,18 +21,18 @@
     </appender>
 
     <!--
-        Root logger level: DEBUG during development so you see everything.
-        Change to INFO before any performance testing — DEBUG logging
-        inside hot paths (like the ClientHandler read loop) adds measurable latency.
+        Root logger level: INFO for production.
+        DEBUG inside hot paths (ClientHandler read loop) adds measurable latency
+        and floods Railway's 500 logs/sec limit.
     -->
-    <root level="DEBUG">
+    <root level="INFO">
         <appender-ref ref="CONSOLE"/>
     </root>
 
-    <!--
-        Suppress noisy Netty/NIO logs if you add them later.
-        Example:
-        <logger name="io.netty" level="WARN"/>
-    -->
+    <!-- Suppress noisy Spring Boot / Tomcat internals -->
+    <logger name="org.springframework" level="WARN"/>
+    <logger name="org.apache.catalina" level="WARN"/>
+    <logger name="org.apache.tomcat" level="WARN"/>
+    <logger name="org.apache.coyote" level="WARN"/>
 
 </configuration>
