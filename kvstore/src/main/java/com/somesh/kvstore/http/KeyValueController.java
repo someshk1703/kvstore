@@ -1,5 +1,6 @@
 package com.somesh.kvstore.http;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -16,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.somesh.kvstore.engine.KVStore;
+import com.somesh.kvstore.persistence.AOFWriter;
+import com.somesh.kvstore.replication.ReplicationManager;
 
 /**
  * REST API for the KVStore.
@@ -39,9 +42,14 @@ import com.somesh.kvstore.engine.KVStore;
 public class KeyValueController {
 
     private final KVStore kvStore;
+    private final AOFWriter aofWriter;
+    private final ReplicationManager replicationManager;
 
-    public KeyValueController(KVStore kvStore) {
+    public KeyValueController(KVStore kvStore, AOFWriter aofWriter,
+                              ReplicationManager replicationManager) {
         this.kvStore = kvStore;
+        this.aofWriter = aofWriter;
+        this.replicationManager = replicationManager;
     }
 
     // ── GET /api/keys/{key} ──────────────────────────────────────────────────
@@ -110,13 +118,43 @@ public class KeyValueController {
         Runtime rt = Runtime.getRuntime();
         long uptimeSeconds = (System.currentTimeMillis() - HttpApiApplication.START_TIME_MS) / 1000;
 
-        Map<String, Object> body = Map.of(
-            "version",       "0.1.0",
-            "totalKeys",     kvStore.size(),
-            "uptimeSeconds", uptimeSeconds,
-            "usedMemoryBytes", rt.totalMemory() - rt.freeMemory(),
-            "maxMemoryBytes",  rt.maxMemory()
-        );
+        long hits   = kvStore.getHitCount();
+        long misses = kvStore.getMissCount();
+        long total  = hits + misses;
+        String hitRatio = total == 0 ? "n/a"
+            : String.format("%.1f%%", (hits * 100.0) / total);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        // Core store stats
+        body.put("version",          "0.1.0");
+        body.put("totalKeys",        kvStore.size());
+        body.put("uptimeSeconds",    uptimeSeconds);
+        body.put("usedMemoryBytes",  rt.totalMemory() - rt.freeMemory());
+        body.put("maxMemoryBytes",   rt.maxMemory());
+        // Hit / miss
+        body.put("hitCount",         hits);
+        body.put("missCount",        misses);
+        body.put("hitRatio",         hitRatio);
+        // Evictions
+        body.put("evictions",        kvStore.getEvictionCount());
+        // AOF persistence
+        if (aofWriter != null) {
+            body.put("aofEnabled",       true);
+            body.put("aofFsyncMode",     aofWriter.getFsyncMode().name());
+            body.put("aofCommandCount",  aofWriter.getCommandCount());
+            body.put("aofPath",          aofWriter.getAofPath());
+        } else {
+            body.put("aofEnabled", false);
+        }
+        // Replication
+        if (replicationManager != null) {
+            body.put("replicaCount",       replicationManager.getReplicaCount());
+            body.put("syncedReplicaCount", replicationManager.getSyncedReplicaCount());
+            body.put("masterOffset",       replicationManager.getMasterOffset());
+        } else {
+            body.put("replicaCount", 0);
+        }
+
         return ResponseEntity.ok(body);
     }
 

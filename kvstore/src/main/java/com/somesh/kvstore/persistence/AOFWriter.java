@@ -11,6 +11,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
@@ -93,6 +94,7 @@ public class AOFWriter implements Closeable {
     private final FsyncMode fsyncMode;
     private BufferedWriter writer;
     private ScheduledExecutorService scheduler;
+    private final AtomicLong commandCount = new AtomicLong(0);
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -130,6 +132,7 @@ public class AOFWriter implements Closeable {
         if (fsyncMode == FsyncMode.ALWAYS) {
             writer.flush();
         }
+        commandCount.incrementAndGet();
     }
 
     /**
@@ -406,4 +409,10 @@ public class AOFWriter implements Closeable {
             }
         }, 1, 1, TimeUnit.SECONDS);
     }
+
+    // ── Observability ─────────────────────────────────────────────────────────
+
+    public long getCommandCount() { return commandCount.get(); }
+    public FsyncMode getFsyncMode() { return fsyncMode; }
+    public String getAofPath() { return aofPath.toString(); }
 }

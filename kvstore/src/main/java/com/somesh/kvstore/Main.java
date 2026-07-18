@@ -119,6 +119,7 @@ public class Main {
             log.info("Starting KVStore in PRIMARY mode on port {} (replication port={})",
                 clientPort, ServerConfig.REPLICATION_PORT);
             server.enableReplication(null);
+            HttpApiApplication.setReplicationManager(server.getReplicationManager());
         } else {
             log.info("Starting KVStore in STANDALONE mode on port {}", clientPort);
         }

@@ -19,5 +19,11 @@ kvstore/data/
 kvstore/logs/
 *.log
 
+# Secrets / environment
+.env
+.env.*
+*.env
+
 # macOS
 .DS_Store
+Thumbs.db

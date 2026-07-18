@@ -318,4 +318,23 @@ public class ReplicationManager implements Closeable {
         replicas.clear();
         ackReaderPool.shutdownNow();
     }
+
+    // ── Observability ──────────────────────────────────────────────────────────
+
+    /** Number of currently connected replicas. */
+    public int getReplicaCount() { return replicas.size(); }
+
+    /**
+     * Number of replicas that have fully caught up to the current master offset.
+     * A replica is "synced" when its acked offset equals the master offset.
+     */
+    public int getSyncedReplicaCount() {
+        long current = masterOffset.get();
+        if (current < 0) return replicas.size();   // no writes yet — all trivially synced
+        int synced = 0;
+        for (ReplicaConnection r : replicas) {
+            if (r.isConnected() && r.getAckedOffset() >= current) synced++;
+        }
+        return synced;
+    }
 }

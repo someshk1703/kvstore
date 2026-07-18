@@ -322,6 +322,11 @@ public class TcpServer {
         replicaListenerThread.start();
     }
 
+    /** Returns the active ReplicationManager, or null if not in primary mode. */
+    public ReplicationManager getReplicationManager() {
+        return replicationManager;
+    }
+
     /**
      * Configure this server to run as a replica of the given primary.
      *

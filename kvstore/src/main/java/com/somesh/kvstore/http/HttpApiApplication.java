@@ -9,6 +9,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
 import com.somesh.kvstore.engine.KVStore;
+import com.somesh.kvstore.persistence.AOFWriter;
+import com.somesh.kvstore.replication.ReplicationManager;
 
 /**
  * Spring Boot entry point for the HTTP API layer.
@@ -35,6 +37,8 @@ public class HttpApiApplication {
 
     // Written once by start() before Spring context is created.
     private static volatile KVStore sharedStore;
+    private static volatile AOFWriter sharedAofWriter;
+    private static volatile ReplicationManager sharedReplicationManager;
 
     // Tracks the server start time for uptime reporting.
     static final long START_TIME_MS = System.currentTimeMillis();
@@ -47,7 +51,22 @@ public class HttpApiApplication {
      * @param httpPort port for the embedded Tomcat to bind (default: 8080)
      */
     public static void start(KVStore store, int httpPort) {
+        start(store, null, null, httpPort);
+    }
+
+    /**
+     * Full-featured start — also wires AOF and replication stats into the HTTP layer.
+     *
+     * @param store      the shared KVStore
+     * @param aofWriter  the AOFWriter (may be null if persistence is disabled)
+     * @param replication the ReplicationManager (may be null if not in primary mode)
+     * @param httpPort   port for embedded Tomcat
+     */
+    public static void start(KVStore store, AOFWriter aofWriter,
+                             ReplicationManager replication, int httpPort) {
         sharedStore = store;
+        sharedAofWriter = aofWriter;
+        sharedReplicationManager = replication;
         Thread thread = new Thread(() -> {
             SpringApplication app = new SpringApplication(HttpApiApplication.class);
             app.setDefaultProperties(Map.of(
@@ -70,5 +89,20 @@ public class HttpApiApplication {
     @Bean
     public KVStore kvStore() {
         return sharedStore;
+    }
+
+    @Bean
+    public AOFWriter aofWriter() {
+        return sharedAofWriter;   // may be null — controller must null-check
+    }
+
+    @Bean
+    public ReplicationManager replicationManager() {
+        return sharedReplicationManager;   // may be null — controller must null-check
+    }
+
+    /** Called from Main after replication is enabled to expose the manager via /api/info. */
+    public static void setReplicationManager(ReplicationManager rm) {
+        sharedReplicationManager = rm;
     }
 }

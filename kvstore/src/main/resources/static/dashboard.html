@@ -156,13 +156,14 @@
       <div class="stat-row"><span class="k">version</span><span class="v" id="statVersion">—</span></div>
     </div>
 
-    <!-- Fields not yet exposed by /api/info — honest labels -->
+    <!-- Fields now wired to real /api/info fields -->
     <div class="panel">
-      <div class="panel-label">persistence &amp; replication <span style="color:var(--text-dim); text-transform:none; letter-spacing:0;">(not yet in /api/info)</span></div>
-      <div class="stat-row"><span class="k">AOF status</span><span class="v" style="color:var(--text-dim)">not exposed yet</span></div>
-      <div class="stat-row"><span class="k">hit / miss ratio</span><span class="v" style="color:var(--text-dim)">not exposed yet</span></div>
-      <div class="stat-row"><span class="k">evictions (session)</span><span class="v" style="color:var(--text-dim)">not exposed yet</span></div>
-      <div class="stat-row"><span class="k">replica sync</span><span class="v" style="color:var(--text-dim)">not exposed yet</span></div>
+      <div class="panel-label">persistence &amp; replication</div>
+      <div class="stat-row"><span class="k">AOF status</span><span class="v" id="statAof">—</span></div>
+      <div class="stat-row"><span class="k">AOF commands logged</span><span class="v" id="statAofCmds">—</span></div>
+      <div class="stat-row"><span class="k">hit / miss ratio</span><span class="v" id="statHitRatio">—</span></div>
+      <div class="stat-row"><span class="k">evictions (session)</span><span class="v" id="statEvictions">—</span></div>
+      <div class="stat-row"><span class="k">replica sync</span><span class="v" id="statReplica">—</span></div>
     </div>
   </div>
 
@@ -200,7 +201,7 @@
 </main>
 
 <footer>
-  <span>polling <code>/api/info</code> every 3s · <code>/api/health</code> status</span>
+  <span>polling <code>/api/info</code> every 3s · <code>/api/health</code> status · hits/misses/evictions/replicas live</span>
   <span>somesh kannan — <a href="https://github.com/someshk1703" target="_blank">github</a></span>
 </footer>
 
@@ -272,7 +273,10 @@ function fmtBytes(n) {
 }
 
 // ── Stats poll — fields match real /api/info response exactly ────────────────
-// { version, totalKeys, uptimeSeconds, usedMemoryBytes, maxMemoryBytes }
+// { version, totalKeys, uptimeSeconds, usedMemoryBytes, maxMemoryBytes,
+//   hitCount, missCount, hitRatio, evictions,
+//   aofEnabled, aofFsyncMode, aofCommandCount, aofPath,
+//   replicaCount, syncedReplicaCount, masterOffset }
 async function pollInfo() {
   try {
     const res = await fetch('/api/info');
@@ -287,6 +291,34 @@ async function pollInfo() {
         : '—';
     document.getElementById('statUptime').textContent  = d.uptimeSeconds != null ? formatUptime(d.uptimeSeconds) : '—';
     document.getElementById('statVersion').textContent = d.version ?? '—';
+
+    // Persistence & replication
+    const aofEl = document.getElementById('statAof');
+    if (d.aofEnabled) {
+      aofEl.textContent = `enabled (${d.aofFsyncMode ?? 'ALWAYS'})`;
+      aofEl.style.color = 'var(--green)';
+    } else {
+      aofEl.textContent = 'disabled';
+      aofEl.style.color = 'var(--text-dim)';
+    }
+
+    const aofCmdsEl = document.getElementById('statAofCmds');
+    aofCmdsEl.textContent = d.aofEnabled ? (d.aofCommandCount ?? 0).toLocaleString() : '—';
+
+    document.getElementById('statHitRatio').textContent =
+      d.hitRatio != null ? `${d.hitRatio}  (${(d.hitCount ?? 0).toLocaleString()} hits / ${(d.missCount ?? 0).toLocaleString()} misses)` : '—';
+
+    document.getElementById('statEvictions').textContent =
+      d.evictions != null ? d.evictions.toLocaleString() : '—';
+
+    const replEl = document.getElementById('statReplica');
+    if (d.replicaCount != null && d.replicaCount > 0) {
+      replEl.textContent = `${d.syncedReplicaCount ?? 0}/${d.replicaCount} synced (offset ${d.masterOffset ?? '—'})`;
+      replEl.style.color = (d.syncedReplicaCount === d.replicaCount) ? 'var(--green)' : 'var(--amber)';
+    } else {
+      replEl.textContent = 'standalone';
+      replEl.style.color = 'var(--text-dim)';
+    }
 
     if (d.totalKeys != null) {
       pulseGrid(d.totalKeys);

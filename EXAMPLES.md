@@ -262,10 +262,11 @@ Then DEL each key individually. For a full wipe during testing, restart the serv
 | memory capacity | Yes | `/api/info` `maxMemoryBytes` (JVM `-Xmx`) |
 | uptime | Yes — counts up every poll | `/api/info` `uptimeSeconds` |
 | version | Yes — static `"0.1.0"` | `/api/info` `version` |
-| AOF status | No — "not exposed yet" | Not in `/api/info` |
-| hit/miss ratio | No — "not exposed yet" | Not in `/api/info` |
-| evictions | No — inferred from key-count drop only | Not in `/api/info` |
-| replica sync | No — "not exposed yet" | Not in `/api/info` |
+| AOF status | Yes — `enabled (ALWAYS/EVERYSEC)` or `disabled` | `/api/info` `aofEnabled`, `aofFsyncMode` |
+| AOF commands logged | Yes — count of write ops appended to WAL | `/api/info` `aofCommandCount` |
+| hit / miss ratio | Yes — live ratio + raw counts | `/api/info` `hitRatio`, `hitCount`, `missCount` |
+| evictions (session) | Yes — LRU eviction counter since startup | `/api/info` `evictions` |
+| replica sync | Yes — `N/M synced (offset X)` or `standalone` | `/api/info` `replicaCount`, `syncedReplicaCount` |
 
 ---
 
@@ -390,3 +391,45 @@ DEL "key with spaces"
 If your parser only splits on whitespace without quote-awareness, values with spaces will silently corrupt on replay — that's a real gap worth knowing about (or fixing) before an interviewer asks "what happens if I SET a value containing a space."
 
 Want me to write out the actual AOF replay pseudocode (reading the file top-to-bottom, applying each line, handling the `# SNAPSHOT` truncation logic) so you have a clean mental model to explain verbally in an interview?
+
+---
+
+## 16. MSET / MGET — multi-key operations (TCP only)
+
+**The dashboard console does NOT support `MSET` or `MGET`.** These commands are only available over the raw TCP connection (port 6379). The REST API and HTTP dashboard expose single-key SET/GET only.
+
+### Via TCP (netcat / redis-cli)
+
+```bash
+# MSET — atomically write multiple keys in one command
+printf 'MSET user:10 alice user:11 bob user:12 carol\r\n' | nc -q1 localhost 6379
+# → +OK
+
+# MGET — read multiple keys in one round-trip
+printf 'MGET user:10 user:11 user:12 user:99\r\n' | nc -q1 localhost 6379
+# → *4\r\n$5\r\nalice\r\n$3\r\nbob\r\n$5\r\ncarol\r\n$-1\r\n
+# user:99 is missing → $-1 (nil)
+```
+
+Or with redis-cli (any version):
+
+```bash
+redis-cli -p 6379 MSET k1 v1 k2 v2 k3 v3
+redis-cli -p 6379 MGET k1 k2 k3 k4   # k4 → (nil)
+```
+
+### Dashboard workaround — simulate MSET
+
+The section 8 "Bulk key population" block above is the dashboard equivalent: paste one `SET` per Enter. Each write triggers a separate REST call (`POST /api/keys/{key}`).
+
+```
+SET user:10 alice
+SET user:11 bob
+SET user:12 carol
+```
+
+Then verify with `KEYS user:1*` — the same result as MGET but as a list of keys only (values not returned by KEYS).
+
+### Why no MSET/MGET in the HTTP API?
+
+The REST API maps naturally to single-resource endpoints: `POST /api/keys/{key}` and `GET /api/keys/{key}`. Adding `MSET` would require either a batch endpoint (e.g. `POST /api/keys/batch` with a JSON body) or multi-key URL encoding — neither maps cleanly to REST semantics. The TCP protocol handles it natively because it owns the framing layer.

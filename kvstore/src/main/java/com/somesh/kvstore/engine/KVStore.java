@@ -1,6 +1,7 @@
 package com.somesh.kvstore.engine;
 
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +45,12 @@ public class KVStore {
     // Lock object — every LRU read/write is wrapped in synchronized(lruLock).
     private final LRUCache lru;
     private final Object   lruLock = new Object();
+
+    // ── Observability counters ────────────────────────────────────────────────
+
+    private final AtomicLong hitCount      = new AtomicLong(0);
+    private final AtomicLong missCount     = new AtomicLong(0);
+    private final AtomicLong evictionCount = new AtomicLong(0);
 
     // ── Constructors ─────────────────────────────────────────────────────────
 
@@ -128,13 +135,18 @@ public class KVStore {
 
     public String get(String key) {
         ValueEntry entry = store.get(key);
-        if (entry == null) return null;
+        if (entry == null) {
+            missCount.incrementAndGet();
+            return null;
+        }
         if (entry.isExpired()) {
             store.remove(key, entry);   // conditional remove — safe under concurrency
             synchronized (lruLock) { lru.remove(key); }
+            missCount.incrementAndGet();
             return null;
         }
         synchronized (lruLock) { lru.get(key); }   // promote to MRU
+        hitCount.incrementAndGet();
         return entry.value;
     }
 
@@ -266,6 +278,7 @@ public class KVStore {
 
             store.remove(evictedKey);
             evictions++;
+            evictionCount.incrementAndGet();
             log.debug("Memory eviction: removed key '{}' (evictions so far: {})", evictedKey, evictions);
         }
 
@@ -273,4 +286,10 @@ public class KVStore {
             log.info("Memory eviction complete — evicted {} keys", evictions);
         }
     }
+
+    // ── Observability getters ──────────────────────────────────────────────────
+
+    public long getHitCount()      { return hitCount.get(); }
+    public long getMissCount()     { return missCount.get(); }
+    public long getEvictionCount() { return evictionCount.get(); }
 }
